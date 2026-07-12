@@ -123,16 +123,16 @@ type CheckinStats struct {
 
 // GateStat represents check-in counts per gate
 type GateStat struct {
-	GateID   uuid.UUID `json:"gate_id"`
-	GateName string    `json:"gate_name"`
-	Count    int       `json:"count"`
-	Pax      int       `json:"pax"`
+	GateID   uuid.UUID `db:"gate_id" json:"gate_id"`
+	GateName string    `db:"gate_name" json:"gate_name"`
+	Count    int       `db:"count" json:"count"`
+	Pax      int       `db:"pax" json:"pax"`
 }
 
 // MethodStat represents check-in counts per method
 type MethodStat struct {
-	Method string `json:"method"`
-	Count  int    `json:"count"`
+	Method string `db:"method" json:"method"`
+	Count  int    `db:"count" json:"count"`
 }
 
 // GuestSearchResult for manual check-in search
