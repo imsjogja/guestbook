@@ -285,7 +285,6 @@ func (s *CommunicationService) SendMessage(ctx context.Context, tenantID, eventI
 		return nil, fmt.Errorf("get event: %w", err)
 	}
 
-	now := time.Now().UTC()
 	var messages []*domain.CommunicationMessage
 
 	for _, guestID := range req.GuestIDs {
@@ -309,11 +308,7 @@ func (s *CommunicationService) SendMessage(ctx context.Context, tenantID, eventI
 
 		// Create message record
 		msg := &domain.CommunicationMessage{
-			Base: domain.Base{
-				ID:        uuid.New(),
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+			Base:     domain.NewBase(),
 			TenantID: tenantID,
 			EventID:  eventID,
 			GuestID:  guestID,
@@ -563,11 +558,7 @@ func (s *CommunicationService) SendCampaign(ctx context.Context, tenantID, event
 		renderedBody := RenderTemplate(template.Body, vars)
 
 		msg := &domain.CommunicationMessage{
-			Base: domain.Base{
-				ID:        uuid.New(),
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+			Base:       domain.NewBase(),
 			TenantID:   tenantID,
 			CampaignID: &campaignID,
 			EventID:    eventID,

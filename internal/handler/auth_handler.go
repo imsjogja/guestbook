@@ -4,15 +4,20 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
+
+	"guestflow/internal/service"
 )
 
 // AuthHandler handles authentication-related HTTP requests.
-// This is a minimal stub for compilation; the full implementation belongs in the Auth module.
-type AuthHandler struct{}
+// This minimal implementation keeps the server wiring compiling while the
+// service layer handles the actual authentication logic.
+type AuthHandler struct {
+	authService *service.AuthService
+}
 
 // NewAuthHandler creates a new AuthHandler.
-func NewAuthHandler() *AuthHandler {
-	return &AuthHandler{}
+func NewAuthHandler(authService *service.AuthService) *AuthHandler {
+	return &AuthHandler{authService: authService}
 }
 
 // Register handles user registration.

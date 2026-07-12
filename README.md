@@ -147,6 +147,9 @@ docker compose exec -T db psql -U guestflow -d guestflow < migrations/999_seed_d
 # API:     http://localhost:8080/api/v1
 # Admin:   http://localhost:8080/admin
 # Health:  http://localhost:8080/health
+
+# Reset and rebuild the full local stack in one step
+make fresh
 ```
 
 ### Local Development
@@ -358,6 +361,7 @@ make migrate-up     # Run database migrations
 make migrate-down   # Rollback migrations
 make seed           # Insert demo data
 make docker-up      # Start Docker Compose
+make fresh          # Reset volumes and bootstrap a clean local stack
 make docker-down    # Stop Docker Compose
 make lint           # Run linter
 make fmt            # Format Go code

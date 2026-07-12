@@ -284,7 +284,7 @@ func (s *CheckinService) GetRecent(ctx context.Context, tenantID, eventID uuid.U
 // ─── Internal Helpers ─────────────────────────────────────────────────────────
 
 // performCheckin performs the actual check-in after all validations pass.
-func (s *CheckinService) performCheckin(ctx context.Context, tenantID, eventID, guestID, invitationID uuid.UUID, officerID *uuid.UUID, req domain.CheckinRequest) (*domain.Checkin, error) {
+func (s *CheckinService) performCheckin(ctx context.Context, tenantID, eventID, guestID uuid.UUID, invitationID *uuid.UUID, officerID *uuid.UUID, req domain.CheckinRequest) (*domain.Checkin, error) {
 	// Verify event exists
 	if _, err := s.eventRepo.GetByIDForTenant(ctx, eventID, tenantID); err != nil {
 		return nil, fmt.Errorf("perform checkin: event not found: %w", err)
@@ -341,17 +341,12 @@ func (s *CheckinService) performCheckin(ctx context.Context, tenantID, eventID, 
 		lonPtr = &req.Longitude
 	}
 
-	invitationIDPtr := &invitationID
-	if invitationID == uuid.Nil {
-		invitationIDPtr = nil
-	}
-
 	checkin := &domain.Checkin{
 		Base:           domain.NewBase(),
 		TenantID:       tenantID,
 		EventID:        eventID,
 		GuestID:        guestID,
-		InvitationID:   invitationIDPtr,
+		InvitationID:   invitationID,
 		Method:         req.Method,
 		Status:         domain.CheckinStatusSuccess,
 		DeviceID:       deviceIDPtr,

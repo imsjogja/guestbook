@@ -1,10 +1,6 @@
 package domain
 
-import (
-	"time"
-
-	"github.com/google/uuid"
-)
+import "github.com/google/uuid"
 
 // Guest types
 const (
@@ -175,7 +171,6 @@ type GuestNote struct {
 
 // NewGuest creates a new Guest from a create request.
 func NewGuest(tenantID, createdBy uuid.UUID, req GuestCreateRequest) *Guest {
-	now := time.Now().UTC()
 	lang := req.Language
 	if lang == "" {
 		lang = "id"
@@ -199,8 +194,6 @@ func NewGuest(tenantID, createdBy uuid.UUID, req GuestCreateRequest) *Guest {
 		IsActive:             true,
 		CreatedBy:            createdBy,
 		Source:               &source,
-		CreatedAt:            now,
-		UpdatedAt:            now,
 	}
 
 	if req.Nickname != "" {

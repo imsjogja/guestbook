@@ -133,11 +133,7 @@ func (s *SeatingService) CreateTable(ctx context.Context, tenantID, eventID uuid
 	}
 
 	table := &domain.Table{
-		Base: domain.Base{
-			ID:        uuid.New(),
-			CreatedAt: time.Now().UTC(),
-			UpdatedAt: time.Now().UTC(),
-		},
+		Base: domain.NewBase(),
 		TenantID:      tenantID,
 		EventID:       eventID,
 		ZoneID:        req.ZoneID,
