@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="{{ .Language }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>{{ .Event.Name }} - GuestFlow</title>
+    <meta name="description" content="You are invited to {{ .Event.Name }}">
+
+    <!-- Open Graph -->
+    <meta property="og:title" content="{{ .Event.Name }}">
+    <meta property="og:description" content="You are invited to {{ .Event.Name }}">
+    <meta property="og:type" content="website">
+    <meta property="og:image" content="{{ .Event.CoverURL }}">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="/static/css/invitation.css">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E💌%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+
+<!-- ==================== HERO SECTION ==================== -->
+<section class="hero" id="hero">
+    <div class="hero-badge">{{ .Event.TypeLabel }}</div>
+    <h1>{{ .Event.Name }}</h1>
+    <p class="hero-subtitle">{{ .Event.Description }}</p>
+
+    {{ if .Guest }}
+    <p class="hero-guest-name">Dear {{ .Guest.FullName }}</p>
+    {{ end }}
+
+    <a href="#rsvp" class="btn btn-primary btn-lg">
+        {{ if eq .Language "id" }}Konfirmasi Kehadiran{{ else }}RSVP Now{{ end }}
+    </a>
+
+    <div class="scroll-indicator">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M7 13l5 5 5-5M7 6l5 5 5-5"/>
+        </svg>
+    </div>
+</section>
+
+<!-- ==================== COUNTDOWN ==================== -->
+<section class="section" id="countdown">
+    <div class="container">
+        <div class="section-header">
+            <h2>{{ if eq .Language "id" }}Menuju Hari Bahagia{{ else }}Counting Down{{ end }}</h2>
+            <p>{{ .Event.StartDateFormatted }}</p>
+        </div>
+
+        <div class="countdown" data-target="{{ .Event.StartDateISO }}">
+            <div class="countdown-item">
+                <span class="countdown-value" id="days">00</span>
+                <span class="countdown-label">{{ if eq .Language "id" }}Hari{{ else }}Days{{ end }}</span>
+            </div>
+            <div class="countdown-item">
+                <span class="countdown-value" id="hours">00</span>
+                <span class="countdown-label">{{ if eq .Language "id" }}Jam{{ else }}Hours{{ end }}</span>
+            </div>
+            <div class="countdown-item">
+                <span class="countdown-value" id="minutes">00</span>
+                <span class="countdown-label">{{ if eq .Language "id" }}Menit{{ else }}Minutes{{ end }}</span>
+            </div>
+            <div class="countdown-item">
+                <span class="countdown-value" id="seconds">00</span>
+                <span class="countdown-label">{{ if eq .Language "id" }}Detik{{ else }}Seconds{{ end }}</span>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ==================== EVENT DETAILS ==================== -->
+<section class="section bg-white" id="details">
+    <div class="container">
+        <div class="section-header">
+            <h2>{{ if eq .Language "id" }}Detail Acara{{ else }}Event Details{{ end }}</h2>
+        </div>
+
+        <div class="card">
+            <div class="event-detail">
+                <div class="detail-row">
+                    <div class="detail-icon">📅</div>
+                    <div class="detail-content">
+                        <h3>{{ if eq .Language "id" }}Tanggal{{ else }}Date{{ end }}</h3>
+                        <p>{{ .Event.StartDateFormatted }}</p>
+                    </div>
+                </div>
+
+                <div class="detail-row">
+                    <div class="detail-icon">📍</div>
+                    <div class="detail-content">
+                        <h3>{{ if eq .Language "id" }}Lokasi{{ else }}Location{{ end }}</h3>
+                        <p>{{ .Event.LocationName }}</p>
+                        <p style="font-size: 0.875rem; color: var(--text-muted);">{{ .Event.LocationAddress }}</p>
+                    </div>
+                </div>
+
+                {{ if .Event.DressCode }}
+                <div class="detail-row">
+                    <div class="detail-icon">👔</div>
+                    <div class="detail-content">
+                        <h3>{{ if eq .Language "id" }}Dress Code{{ else }}Dress Code{{ end }}</h3>
+                        <p>{{ .Event.DressCode }}</p>
+                    </div>
+                </div>
+                {{ end }}
+
+                {{ if .Event.LocationMapsURL }}
+                <div style="margin-top: 8px;">
+                    <a href="{{ .Event.LocationMapsURL }}" target="_blank" rel="noopener" class="btn btn-secondary btn-block">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 6px;">
+                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+                        </svg>
+                        {{ if eq .Language "id" }}Buka di Google Maps{{ else }}Open in Google Maps{{ end }}
+                    </a>
+                </div>
+                {{ end }}
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ==================== TIMELINE ==================== -->
+{{ if .Sessions }}
+<section class="section" id="timeline">
+    <div class="container">
+        <div class="section-header">
+            <h2>{{ if eq .Language "id" }}Jadwal Acara{{ else }}Event Schedule{{ end }}</h2>
+        </div>
+
+        <div class="card">
+            <div class="timeline">
+                {{ range .Sessions }}
+                <div class="timeline-item">
+                    <div class="timeline-dot"></div>
+                    <div class="timeline-content">
+                        <div class="timeline-time">{{ .StartTimeFormatted }}</div>
+                        <h3>{{ .Name }}</h3>
+                        <p>{{ .Description }}</p>
+                    </div>
+                </div>
+                {{ end }}
+            </div>
+        </div>
+    </div>
+</section>
+{{ end }}
+
+<!-- ==================== RSVP SECTION ==================== -->
+<section class="section bg-white" id="rsvp">
+    <div class="container">
+        <div class="section-header">
+            <h2>{{ if eq .Language "id" }}Konfirmasi Kehadiran{{ else }}RSVP{{ end }}</h2>
+            <p>{{ if eq .Language "id" }}Mohon konfirmasi kehadiran Anda sebelum {{ .RSVPDeadline }}{{ else }}Please confirm your attendance before {{ .RSVPDeadline }}{{ end }}</p>
+        </div>
+
+        <div class="card">
+            {{ if .RSVPSubmitted }}
+            <!-- Already submitted -->
+            <div style="text-align: center; padding: 24px 0;">
+                <div style="font-size: 3rem; margin-bottom: 16px;">✅</div>
+                <h3>{{ if eq .Language "id" }}Terima kasih!{{ else }}Thank you!{{ end }}</h3>
+                <p style="color: var(--text-light); margin-top: 8px;">
+                    {{ if eq .RSVP.Status "attending" }}
+                        {{ if eq .Language "id" }}Kami menantikan kehadiran Anda!{{ else }}We look forward to seeing you!{{ end }}
+                    {{ else if eq .RSVP.Status "not_attending" }}
+                        {{ if eq .Language "id" }}Terima kasih telah memberitahu kami.{{ else }}Thank you for letting us know.{{ end }}
+                    {{ end }}
+                </p>
+
+                {{ if .RSVP.QRURL }}
+                <div class="qr-container" style="margin-top: 24px;">
+                    <div class="qr-code">
+                        <img src="{{ .RSVP.QRURL }}" alt="Your QR Code">
+                    </div>
+                    <p style="font-size: 0.875rem; color: var(--text-light);">
+                        {{ if eq .Language "id" }}Tunjukkan QR ini saat check-in{{ else }}Show this QR at check-in{{ end }}
+                    </p>
+                </div>
+                {{ end }}
+            </div>
+            {{ else }}
+            <!-- RSVP Form -->
+            <form id="rsvpForm" method="POST" action="/api/v1/rsvp">
+                <input type="hidden" name="token" value="{{ .InvitationToken }}">
+
+                <!-- Attendance -->
+                <div class="form-group">
+                    <label class="form-label">{{ if eq .Language "id" }}Apakah Anda akan hadir?{{ else }}Will you attend?{{ end }}</label>
+                    <div class="radio-group">
+                        <div class="radio-card">
+                            <input type="radio" name="status" value="attending" id="rsvp-yes" required>
+                            <label for="rsvp-yes">
+                                {{ if eq .Language "id" }}Hadir{{ else }}Attending{{ end }}
+                            </label>
+                        </div>
+                        <div class="radio-card">
+                            <input type="radio" name="status" value="not_attending" id="rsvp-no" required>
+                            <label for="rsvp-no">
+                                {{ if eq .Language "id" }}Tidak Hadir{{ else }}Not Attending{{ end }}
+                            </label>
+                        </div>
+                        <div class="radio-card">
+                            <input type="radio" name="status" value="maybe" id="rsvp-maybe" required>
+                            <label for="rsvp-maybe">
+                                {{ if eq .Language "id" }}Mungkin{{ else }}Maybe{{ end }}
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Number of guests -->
+                <div class="form-group" id="paxGroup">
+                    <label class="form-label">{{ if eq .Language "id" }}Jumlah Tamu{{ else }}Number of Guests{{ end }}</label>
+                    <select name="attending_pax" class="form-select">
+                        {{ range .MaxPaxOptions }}
+                        <option value="{{ . }}">{{ . }} {{ if eq .Language "id" }}orang{{ else }}person(s){{ end }}</option>
+                        {{ end }}
+                    </select>
+                </div>
+
+                <!-- Adults / Children -->
+                <div class="form-group" id="adultsChildren" style="display: flex; gap: 12px;">
+                    <div style="flex: 1;">
+                        <label class="form-label">{{ if eq .Language "id" }}Dewasa{{ else }}Adults{{ end }}</label>
+                        <input type="number" name="adults" class="form-input" value="1" min="1" max="50">
+                    </div>
+                    <div style="flex: 1;">
+                        <label class="form-label">{{ if eq .Language "id" }}Anak{{ else }}Children{{ end }}</label>
+                        <input type="number" name="children" class="form-input" value="0" min="0" max="50">
+                    </div>
+                </div>
+
+                <!-- Menu choice -->
+                {{ if .MenuOptions }}
+                <div class="form-group" id="menuGroup">
+                    <label class="form-label">{{ if eq .Language "id" }}Pilihan Menu{{ else }}Menu Preference{{ end }}</label>
+                    <select name="menu_choice" class="form-select">
+                        {{ range .MenuOptions }}
+                        <option value="{{ .Value }}">{{ .Label }}</option>
+                        {{ end }}
+                    </select>
+                </div>
+                {{ end }}
+
+                <!-- Dietary restrictions -->
+                <div class="form-group">
+                    <label class="form-label">{{ if eq .Language "id" }}Alergi / Pantangan Makanan{{ else }}Allergies / Dietary Restrictions{{ end }}</label>
+                    <input type="text" name="allergies" class="form-input" placeholder="{{ if eq .Language "id" }}Contoh: Seafood, Kacang...{{ else }}e.g. Nuts, Shellfish...{{ end }}">
+                </div>
+
+                <!-- Notes -->
+                <div class="form-group">
+                    <label class="form-label">{{ if eq .Language "id" }}Catatan{{ else }}Notes{{ end }}</label>
+                    <textarea name="notes" class="form-textarea" placeholder="{{ if eq .Language "id" }}Tulis pesan atau catatan Anda...{{ else }}Your message or notes...{{ end }}"></textarea>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block btn-lg" id="rsvpSubmit">
+                    {{ if eq .Language "id" }}Kirim RSVP{{ else }}Submit RSVP{{ end }}
+                </button>
+            </form>
+            {{ end }}
+        </div>
+    </div>
+</section>
+
+<!-- ==================== GALLERY ==================== -->
+{{ if .GalleryImages }}
+<section class="section" id="gallery">
+    <div class="container">
+        <div class="section-header">
+            <h2>{{ if eq .Language "id" }}Galeri{{ else }}Gallery{{ end }}</h2>
+        </div>
+
+        <div class="gallery">
+            {{ range .GalleryImages }}
+            <div class="gallery-item">
+                <img src="{{ .URL }}" alt="{{ .Caption }}" loading="lazy">
+            </div>
+            {{ end }}
+        </div>
+    </div>
+</section>
+{{ end }}
+
+<!-- ==================== WISHES ==================== -->
+<section class="section bg-white" id="wishes">
+    <div class="container">
+        <div class="section-header">
+            <h2>{{ if eq .Language "id" }}Ucapan & Doa{{ else }}Wishes & Prayers{{ end }}</h2>
+        </div>
+
+        <div class="card">
+            <form id="wishForm">
+                <div class="form-group">
+                    <label class="form-label">{{ if eq .Language "id" }}Nama{{ else }}Name{{ end }}</label>
+                    <input type="text" class="form-input" placeholder="{{ if eq .Language "id" }}Nama Anda{{ else }}Your name{{ end }}" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">{{ if eq .Language "id" }}Ucapan{{ else }}Message{{ end }}</label>
+                    <textarea class="form-textarea" rows="3" placeholder="{{ if eq .Language "id" }}Tulis ucapan dan doa Anda...{{ else }}Write your wishes and prayers...{{ end }}" required></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">
+                    {{ if eq .Language "id" }}Kirim Ucapan{{ else }}Send Wish{{ end }}
+                </button>
+            </form>
+        </div>
+
+        <div id="wishesList" style="margin-top: 24px;">
+            <!-- Wishes will be loaded dynamically -->
+        </div>
+    </div>
+</section>
+
+<!-- ==================== FOOTER ==================== -->
+<footer class="footer">
+    <div class="container">
+        <p>
+            {{ if eq .Language "id" }}Dibuat dengan{{ else }}Made with{{ end }} ❤️ 
+            {{ if eq .Language "id

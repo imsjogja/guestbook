@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GuestFlow - Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/admin.css">
+</head>
+<body>
+<div class="app">
+
+<!-- ========== SIDEBAR ========== -->
+<aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+        <div class="sidebar-brand-logo">GF</div>
+        <span class="sidebar-brand-name">GuestFlow</span>
+    </div>
+
+    <nav class="sidebar-nav">
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">Menu Utama</div>
+            <a href="#dashboard" class="sidebar-link active">
+                <span class="sidebar-link-icon">📊</span>
+                Dashboard
+            </a>
+            <a href="#events" class="sidebar-link">
+                <span class="sidebar-link-icon">📅</span>
+                Acara
+            </a>
+            <a href="#guests" class="sidebar-link">
+                <span class="sidebar-link-icon">👥</span>
+                Tamu
+            </a>
+            <a href="#invitations" class="sidebar-link">
+                <span class="sidebar-link-icon">💌</span>
+                Undangan
+            </a>
+            <a href="#rsvp" class="sidebar-link">
+                <span class="sidebar-link-icon">📝</span>
+                RSVP
+            </a>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">Operasional</div>
+            <a href="#checkin" class="sidebar-link">
+                <span class="sidebar-link-icon">📱</span>
+                Check-in
+            </a>
+            <a href="#seating" class="sidebar-link">
+                <span class="sidebar-link-icon">🪑</span>
+                Seating
+            </a>
+            <a href="#communication" class="sidebar-link">
+                <span class="sidebar-link-icon">💬</span>
+                Komunikasi
+            </a>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">Laporan</div>
+            <a href="#reports" class="sidebar-link">
+                <span class="sidebar-link-icon">📈</span>
+                Laporan
+            </a>
+            <a href="#audit" class="sidebar-link">
+                <span class="sidebar-link-icon">🔍</span>
+                Audit Log
+            </a>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">Pengaturan</div>
+            <a href="#team" class="sidebar-link">
+                <span class="sidebar-link-icon">⚙️</span>
+                Tim & Role
+            </a>
+            <a href="#settings" class="sidebar-link">
+                <span class="sidebar-link-icon">🔧</span>
+                Pengaturan
+            </a>
+        </div>
+    </nav>
+
+    <div class="sidebar-footer">
+        <div class="sidebar-user">
+            <div class="sidebar-user-avatar">EM</div>
+            <div class="sidebar-user-info">
+                <div class="sidebar-user-name">Event Manager</div>
+                <div class="sidebar-user-role">event_manager</div>
+            </div>
+        </div>
+    </div>
+</aside>
+
+<!-- ========== MAIN CONTENT ========== -->
+<main class="main">
+    <!-- Header -->
+    <header class="header">
+        <h1 class="header-title">Dashboard</h1>
+        <div class="header-actions">
+            <button class="header-btn" title="Notifikasi">🔔</button>
+            <button class="header-btn" title="Bantuan">❓</button>
+            <button class="header-btn" id="menuToggle" title="Menu">☰</button>
+        </div>
+    </header>
+
+    <!-- Content -->
+    <div class="content">
+        <!-- Stats Grid -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-header">
+                    <span class="stat-title">Total Undangan</span>
+                    <div class="stat-icon purple">💌</div>
+                </div>
+                <div class="stat-value" id="stat-invitations">0</div>
+                <div class="stat-meta">
+                    <span class="stat-change up">+12%</span>
+                    <span>dari minggu lalu</span>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-header">
+                    <span class="stat-title">RSVP Hadir</span>
+                    <div class="stat-icon green">✅</div>
+                </div>
+                <div class="stat-value" id="stat-attending">0</div>
+                <div class="stat-meta">
+                    <span class="stat-change up">+8%</span>
+                    <span>dari target</span>
+                </div>
+                <div class="progress">
+                    <div class="progress-bar green" style="width: 0%" id="progress-attending"></div>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-header">
+                    <span class="stat-title">Check-in</span>
+                    <div class="stat-icon amber">📱</div>
+                </div>
+                <div class="stat-value" id="stat-checkins">0</div>
+                <div class="stat-meta">
+                    <span class="stat-change up">Live</span>
+                    <span>real-time</span>
+                </div>
+                <div class="progress">
+                    <div class="progress-bar amber" style="width: 0%" id="progress-checkins"></div>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-header">
+                    <span class="stat-title">Belum Respons</span>
+                    <div class="stat-icon rose">⏳</div>
+                </div>
+                <div class="stat-value" id="stat-pending">0</div>
+                <div class="stat-meta">
+                    <span class="stat-change down">-3%</span>
+                    <span>follow-up</span>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-header">
+                    <span class="stat-title">Walk-in</span>
+                    <div class="stat-icon blue">🚶</div>
+                </div>
+                <div class="stat-value" id="stat-walkins">0</div>
+                <div class="stat-meta">
+                    <span class="badge badge-gray">Hari ini</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Activity + Quick Actions -->
+        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
+            <!-- Recent Check-ins -->
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Check-in Terbaru</h3>
+                    <a href="#checkin" class="btn btn-sm btn-secondary">Lihat Semua</a>
+                </div>
+                <div class="card-body">
+                    <div class="table-container">
+                        <table class="table" id="recent-checkins">
+                            <thead>
+                                <tr>
+                                    <th>Tamu</th>
+                                    <th>Waktu</th>
+                                    <th>Gate</th>
+                                    <th>Pax</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="5">
+                                        <div class="empty-state">
+                                            <div class="empty-state-icon">📋</div>
+                                            <div class="empty-state-title">Belum ada check-in</div>
+                                            <div class="empty-state-desc">Data akan muncul saat tamu mulai check-in</div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Aksi Cepat</h3>
+                </div>
+                <div class="card-body" style="display: flex; flex-direction: column; gap: 8px;">
+                    <button class="btn btn-primary btn-block" onclick="showModal('add-guest')">
+                        <span>+</span> Tambah Tamu
+                    </button>
+                    <button class="btn btn-secondary btn-block" onclick="showModal('send-invitation')">
+                        <span>💌</span> Kirim Undangan
+                    </button>
+                    <button class="btn btn-secondary btn-block" onclick="showModal('import-guests')">
+                        <span>📁</span> Import CSV
+                    </button>
+                    <button class="btn btn-secondary btn-block" onclick="location.href='#checkin'">
+                        <span>📱</span> Buka Scanner
+                    </button>
+                    <button class="btn btn-secondary btn-block" onclick="showModal('export-report')">
+                        <span>📊</span> Export Laporan
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+
+</div><!-- /app -->
+
+<!-- Modal Template -->
+<div class="modal-overlay" id="modal-overlay">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 class="modal-title" id="modal-title">Modal</h3>
+            <button class="modal-close" onclick="hideModal()">&times;</button>
+        </div>
+        <div class="modal-body" id="modal-body">
+            <!-- Content injected by JS -->
+        </div>
+        <div class="modal-footer" id="modal-footer">
+            <button class="btn btn-secondary" onclick="hideModal()">Batal</button>
+            <button class="btn btn-primary" id="modal-confirm">Simpan</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// Mobile sidebar toggle
+document.getElementById('menuToggle').addEventListener('click', function() {
+    document.getElementById('sidebar').classList.toggle('open');
+});
+
+// Modal functions
+function showModal(type) {
+    const overlay = document.getElementById('modal-overlay');
+    const title = document.getElementById('modal-title');
+    const body = document.getElementById('modal-body');
+
+    const templates = {
+        'add-guest': {
+            title: 'Tambah Tamu',
+            body: `
+                <div class="form-group">
+                    <label class="form-label">Nama Lengkap *</label>
+                    <input type="text" class="form-input" placeholder="Nama tamu" autofocus>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Telepon</label>
+                        <input type="tel" class="form-input" placeholder="+62...">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Email</label>
+                        <input type="email" class="form-input" placeholder="email@example.com">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Tipe Tamu</label>
+                        <select class="form-select">
+                            <option value="general">Umum</option>
+                            <option value="vip">VIP</option>
+                            <option value="vvip">VVIP</option>
+                            <option value="family">Keluarga</option>
+                            <option value="colleague">Rekan</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Segmen</label>
+                        <input type="text" class="form-input" placeholder="Contoh: Keluarga Pengantin">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Catatan</label>
+                    <textarea class="form-textarea" placeholder="Catatan internal..."></textarea>
+                </div>
+            `
+        },
+        'send-invitation': {
+            title: 'Kirim Undangan',
+            body: `
+                <div class="form-group">
+                    <label class="form-label">Pilih Template</label>
+                    <select class="form-select">
+                        <option>Template Undangan Default</option>
+                        <option>Save the Date</option>
+                        <option>Reminder RSVP</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Channel</label>
+                    <select class="form-select">
+                        <option value="whatsapp">WhatsApp</option>
+                        <option value="email">Email</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Preview Pesan</label>
+                    <div style="padding: 12px; background: var(--bg); border-radius: var(--radius-sm); font-size: 0.8125rem;">
+                        Halo <b>{{nama_tamu}}</b>,
+                        <br><br>
+                        Anda diundang ke <b>{{nama_acara}}</b>.
+                        <br>
+                        Konfirmasi kehadiran: <b>{{link_rsvp}}</b>
+                    </div>
+                </div>
+            `
+        },
+        'import-guests': {
+            title: 'Import Tamu (CSV)',
+            body: `
+                <div class="form-group">
+                    <label class="form-label">File CSV</label>
+                    <input type="file" class="form-input" accept=".csv,.xlsx">
+                    <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
+                        Format: full_name, phone, email, guest_type, segment
+                    </p>
+                </div>
+                <div style="padding: 12px; background: rgba(59,130,246,0.05); border-radius: var(--radius-sm); border: 1px solid rgba(59,130,246,0.2);">
+                    <a href="/api/v1/tenants/TENANT_ID/guests/import/template" class="btn btn-sm btn-secondary" download>
+                        📥 Download Template
+                    </a>
+                </div>
+            `
+        },
+        'export-report': {
+            title: 'Export Laporan',
+            body: `
+                <div class="form-group">
+                    <label class="form-label">Jenis Laporan</label>
+                    <select class="form-select">
+                        <option>Laporan Tamu</option>
+                        <option>Laporan RSVP</option>
+                        <option>Laporan Kehadiran</option>
+                        <option>Laporan Meja</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Format</label>
+                    <select class="form-select">
+                        <option value="xlsx">Excel (.xlsx)</option>
+                        <option value="csv">CSV (.csv)</option>
+                        <option value="pdf">PDF (.pdf)</option>
+                    </select>
+                </div>
+            `
+        }
+    };
+
+    const tmpl = templates[type] || { title: 'Modal', body: '' };
+    title.textContent = tmpl.title;
+    body.innerHTML = tmpl.body;
+    overlay.classList.add('active');
+}
+
+function hideModal() {
+    document.getElementById('modal-overlay').classList.remove('active');
+}
+
+// Close modal on overlay click
+document.getElementById('modal-overlay').addEventListener('click', function(e) {
+    if (e.target === this) hideModal();
+});
+
+// Close modal on Escape key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') hideModal();
+});
+
+// Fetch dashboard data
+document.addEventListener('DOMContentLoaded', function() {
+    // TODO: Replace with actual API call
+    // fetchDashboardData();
+});
+</script>
+
+</body>
+</html>

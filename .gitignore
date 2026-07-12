@@ -1,0 +1,48 @@
+# Go
+/bin/
+/vendor/
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+coverage.html
+coverage.out
+
+# Environment
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Uploads
+/uploads/
+/tmp/
+
+# Air hot reload
+/tmp/
+.air.toml
+
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
