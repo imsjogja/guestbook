@@ -163,8 +163,10 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 	// Dependency Injection: Layer 2 - Repositories
 	// =====================================================================
 	// Auth & Tenant
+	userRepo := repository.NewUserRepository(db)
 	tenantRepo := repository.NewTenantRepository(db)
 	tenantUserRepo := repository.NewTenantUserRepository(db)
+	refreshTokenRepo := repository.NewRefreshTokenRepository(db)
 	auditRepo := repository.NewAuditRepository(db)
 
 	// Event
@@ -200,11 +202,12 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 	tenantService := service.NewTenantService(tenantRepo, tenantUserRepo, auditService)
 	eventService := service.NewEventService(eventRepo, eventSessionRepo, eventLocationRepo, auditService)
 	guestService := service.NewGuestService(guestRepo, householdRepo, guestTagRepo, auditService)
-	householdService := service.NewHouseholdService(householdRepo, auditService)
+	importService := service.NewImportService(guestRepo)
+	householdService := service.NewHouseholdService(householdRepo, guestRepo, auditService)
 	invitationService := service.NewInvitationService(invitationRepo, eventRepo, rsvpRepo, guestRepo, auditService)
-	rsvpService := service.NewRSVPService(rsvpRepo, invitationRepo, eventRepo, auditService)
+	rsvpService := service.NewRSVPService(rsvpRepo, eventRepo, invitationRepo, auditService)
 	checkinService := service.NewCheckinService(checkinRepo, guestRepo, eventRepo, seatingRepo, auditService)
-	seatingService := service.NewSeatingService(seatingRepo, guestRepo, checkinRepo, auditService)
+	seatingService := service.NewSeatingService(seatingRepo, eventRepo, guestRepo, auditService)
 	commService := service.NewCommunicationService(commRepo, guestRepo, eventRepo)
 	dashboardService := service.NewDashboardService(db, eventRepo, rsvpRepo, checkinRepo, commRepo, seatingRepo)
 
@@ -214,7 +217,7 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 	authHandler := handler.NewAuthHandler(authService)
 	tenantHandler := handler.NewTenantHandler(tenantService)
 	eventHandler := handler.NewEventHandler(eventService)
-	guestHandler := handler.NewGuestHandler(guestService)
+	guestHandler := handler.NewGuestHandler(guestService, importService)
 	householdHandler := handler.NewHouseholdHandler(householdService)
 	invitationHandler := handler.NewInvitationHandler(invitationService)
 	rsvpHandler := handler.NewRSVPHandler(rsvpService, invitationService)

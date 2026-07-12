@@ -6,7 +6,6 @@
 #
 # Usage:
 #   ./scripts/dev.sh setup    # First-time setup (DB + migrations + seed)
-#   ./scripts/dev.sh fresh    # Reset data and re-bootstrap local stack
 #   ./scripts/dev.sh server   # Start Go server
 #   ./scripts/dev.sh migrate  # Run database migrations
 #   ./scripts/dev.sh seed     # Insert demo data
@@ -121,59 +120,6 @@ cmd_setup() {
     echo "  Tenant:   demo-wo"
 }
 
-cmd_fresh() {
-    local assume_yes="${1:-false}"
-    local reply=""
-
-    log_warn "This will DESTROY all data in Docker volumes and recreate the stack."
-    if [[ "$assume_yes" != "true" ]]; then
-        read -p "Are you sure? [y/N] " -n 1 -r
-        echo
-        reply="${REPLY:-}"
-        if [[ ! "$reply" =~ ^[Yy]$ ]]; then
-            log_info "Fresh bootstrap cancelled"
-            return
-        fi
-    fi
-
-    if ! command -v curl &> /dev/null; then
-        log_err "curl is required for the post-start health check."
-        exit 1
-    fi
-
-    log_info "Resetting Docker stack and volumes..."
-    docker compose down -v --remove-orphans
-
-    log_info "Starting fresh local stack..."
-    docker compose up --build -d
-
-    wait_for_app() {
-        log_info "Waiting for application health endpoint..."
-        local retries=60
-        while ! curl -fsS "http://localhost:${APP_PORT}/health" > /dev/null 2>&1; do
-            retries=$((retries - 1))
-            if [ "$retries" -eq 0 ]; then
-                log_err "Application failed to become healthy after 60 seconds"
-                exit 1
-            fi
-            sleep 1
-        done
-        log_ok "Application is ready"
-    }
-
-    wait_for_app
-
-    log_ok "Fresh bootstrap complete!"
-    log_info "API:     http://localhost:${APP_PORT}/api/v1"
-    log_info "Admin:   http://localhost:${APP_PORT}/admin"
-    log_info "Health:  http://localhost:${APP_PORT}/health"
-    echo ""
-    log_info "Demo credentials:"
-    echo "  Email:    demo@guestflow.id"
-    echo "  Password: password123"
-    echo "  Tenant:   demo-wo"
-}
-
 cmd_migrate() {
     log_info "Running database migrations..."
     go run cmd/migrate/main.go up
@@ -225,14 +171,9 @@ cmd_down() {
 
 cmd_reset() {
     log_warn "This will DESTROY all data in the database!"
-    local assume_yes="${1:-false}"
-    local reply=""
-    if [[ "$assume_yes" != "true" ]]; then
-        read -p "Are you sure? [y/N] " -n 1 -r
-        echo
-        reply="${REPLY:-}"
-    fi
-    if [[ "$assume_yes" == "true" || "$reply" =~ ^[Yy]$ ]]; then
+    read -p "Are you sure? [y/N] " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
         docker compose down -v
         docker volume rm guestflow_postgres_data guestflow_redis_data 2>/dev/null || true
         log_ok "All data destroyed. Run './scripts/dev.sh setup' to start fresh."
@@ -248,7 +189,6 @@ cmd_help() {
     echo ""
     echo "Commands:"
     echo "  setup    First-time environment setup"
-    echo "  fresh    Reset data and rebuild the full local stack"
     echo "  server   Start Go server"
     echo "  worker   Start background worker"
     echo "  migrate  Run database migrations"
@@ -272,17 +212,9 @@ cmd_help() {
 # =============================================================================
 
 COMMAND="${1:-help}"
-shift || true
 
 case "$COMMAND" in
-    setup)    cmd_setup "$@" ;;
-    fresh)
-        if [[ "${1:-}" == "--yes" || "${1:-}" == "-y" ]]; then
-            cmd_fresh true
-        else
-            cmd_fresh false
-        fi
-        ;;
+    setup)    cmd_setup ;;
     server)   cmd_server ;;
     worker)   cmd_worker ;;
     migrate)  cmd_migrate ;;
@@ -290,12 +222,6 @@ case "$COMMAND" in
     test)     cmd_test ;;
     test-all) cmd_test_all ;;
     down)     cmd_down ;;
-    reset)
-        if [[ "${1:-}" == "--yes" || "${1:-}" == "-y" ]]; then
-            cmd_reset true
-        else
-            cmd_reset false
-        fi
-        ;;
+    reset)    cmd_reset ;;
     help|*)   cmd_help ;;
 esac

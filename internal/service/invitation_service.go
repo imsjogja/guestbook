@@ -100,6 +100,7 @@ func (s *InvitationService) Create(ctx context.Context, tenantID, eventID, creat
 	// Build the public URL.
 	url := fmt.Sprintf("%s/%s", s.baseURL, token)
 
+	now := time.Now().UTC()
 	invitation := &domain.Invitation{
 		Base:            domain.NewBase(),
 		TenantID:        tenantID,
@@ -116,6 +117,8 @@ func (s *InvitationService) Create(ctx context.Context, tenantID, eventID, creat
 		Status:          domain.InvitationStatusDraft,
 		ExpiresAt:       req.ExpiresAt,
 		CreatedBy:       createdBy,
+		CreatedAt:       now,
+		UpdatedAt:       now,
 	}
 
 	if err := s.invitationRepo.Create(ctx, invitation); err != nil {

@@ -192,7 +192,7 @@ Merupakan suatu kehormatan dan kebahagiaan bagi kami apabila Bapak/Ibu/Saudara/i
 
 Hormat kami,
 {{host_names}}',
-     to_jsonb(ARRAY['guest_name','event_name','event_date','event_location','rsvp_link','host_names']::text[]),
+     ARRAY['guest_name','event_name','event_date','event_location','rsvp_link','host_names'],
      true, true, 'Template undangan pernikahan via WhatsApp', 'id',
      NOW(), NOW()),
 
@@ -205,7 +205,7 @@ Ini pengingat bahwa batas konfirmasi kehadiran untuk {{event_name}} adalah {{rsv
 Mohon konfirmasi melalui: {{rsvp_link}}
 
 Terima kasih!',
-     to_jsonb(ARRAY['guest_name','event_name','rsvp_deadline','rsvp_link']::text[]),
+     ARRAY['guest_name','event_name','rsvp_deadline','rsvp_link'],
      true, true, 'Template pengingat RSVP', 'id',
      NOW(), NOW()),
 
@@ -222,7 +222,7 @@ Terima kasih!',
 <p>QR Code check-in Anda terlampir.</p>
 <p>Sampai jumpa di acara!</p>
 </body></html>',
-     to_jsonb(ARRAY['guest_name','event_name','event_date','event_location']::text[]),
+     ARRAY['guest_name','event_name','event_date','event_location'],
      true, true, 'Template konfirmasi kehadiran via email', 'id',
      NOW(), NOW());
 

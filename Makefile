@@ -1,7 +1,7 @@
 # GuestFlow - Makefile
 # Common development and deployment tasks
 
-.PHONY: all build test clean lint docker-up docker-down migrate-up migrate-down dev fresh help
+.PHONY: all build test clean lint docker-up docker-down migrate-up migrate-down dev help
 
 # ------------------------------------------------------------------------------
 # Variables
@@ -52,10 +52,6 @@ dev:
 	@echo "Starting development environment..."
 	@bash ./scripts/dev.sh
 
-fresh:
-	@echo "Resetting and bootstrapping the local stack..."
-	@bash ./scripts/dev.sh fresh --yes
-
 dev-hot:
 	@echo "Starting development with hot reload..."
 	air
@@ -65,19 +61,19 @@ dev-hot:
 # ------------------------------------------------------------------------------
 docker-up:
 	@echo "Starting Docker services..."
-	docker compose up --build -d
+	docker-compose up --build -d
 
 docker-down:
 	@echo "Stopping Docker services..."
-	docker compose down
+	docker-compose down
 
 docker-logs:
 	@echo "Showing Docker logs..."
-	docker compose logs -f app
+	docker-compose logs -f app
 
 docker-clean:
 	@echo "Cleaning Docker resources..."
-	docker compose down -v --remove-orphans
+	docker-compose down -v --remove-orphans
 	docker system prune -f
 
 # ------------------------------------------------------------------------------
@@ -169,7 +165,6 @@ help:
 	@echo "  test-short    Run short tests only"
 	@echo "  test-coverage Run tests and generate HTML coverage report"
 	@echo "  dev           Start development environment"
-	@echo "  fresh         Reset volumes and rebuild the full local stack"
 	@echo "  docker-up     Start all Docker services"
 	@echo "  docker-down   Stop all Docker services"
 	@echo "  docker-logs   Follow application logs"

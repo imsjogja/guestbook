@@ -134,6 +134,8 @@ func (s *RSVPService) Submit(ctx context.Context, req domain.RSVPSubmitRequest, 
 		AttendingSessions: req.AttendingSessions,
 		RespondedAt:       &now,
 		IPAddress:         &ipAddress,
+		CreatedAt:         now,
+		UpdatedAt:         now,
 	}
 
 	if req.MenuChoice != "" {

@@ -75,15 +75,11 @@ func (r RedisConfig) Addr() string {
 
 // JWTConfig contains JWT token settings.
 type JWTConfig struct {
-	AccessSecret  string        `mapstructure:"access_secret"`
-	RefreshSecret string        `mapstructure:"refresh_secret"`
-	AccessTTL     time.Duration `mapstructure:"access_ttl"`
-	RefreshTTL    time.Duration `mapstructure:"refresh_ttl"`
-	Issuer        string        `mapstructure:"issuer"`
-	Audience      string        `mapstructure:"audience"`
-
-	// Secret is a legacy fallback for setups that still use JWT_SECRET.
-	Secret string `mapstructure:"secret"`
+	Secret             string        `mapstructure:"secret"`
+	AccessTokenExpiry  time.Duration `mapstructure:"access_token_expiry"`
+	RefreshTokenExpiry time.Duration `mapstructure:"refresh_token_expiry"`
+	Issuer             string        `mapstructure:"issuer"`
+	Audience           string        `mapstructure:"audience"`
 }
 
 // ServerConfig contains HTTP server settings.
@@ -234,11 +230,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("redis.max_retries", 3)
 
 	// JWT defaults
-	v.SetDefault("jwt.access_secret", "dev-access-secret-change-me")
-	v.SetDefault("jwt.refresh_secret", "dev-refresh-secret-change-me")
-	v.SetDefault("jwt.access_ttl", "15m")
-	v.SetDefault("jwt.refresh_ttl", "168h")
 	v.SetDefault("jwt.secret", "dev-secret-change-me")
+	v.SetDefault("jwt.access_token_expiry", "15m")
+	v.SetDefault("jwt.refresh_token_expiry", "168h")
 	v.SetDefault("jwt.issuer", "guestflow")
 	v.SetDefault("jwt.audience", "guestflow-api")
 
@@ -308,11 +302,9 @@ func bindEnvs(v *viper.Viper) {
 		{"redis.pool_size", "REDIS_POOL_SIZE"},
 		{"redis.min_idle_conns", "REDIS_MIN_IDLE_CONNS"},
 		{"redis.max_retries", "REDIS_MAX_RETRIES"},
-		{"jwt.access_secret", "JWT_ACCESS_SECRET"},
-		{"jwt.refresh_secret", "JWT_REFRESH_SECRET"},
-		{"jwt.access_ttl", "JWT_ACCESS_TTL"},
-		{"jwt.refresh_ttl", "JWT_REFRESH_TTL"},
 		{"jwt.secret", "JWT_SECRET"},
+		{"jwt.access_token_expiry", "JWT_ACCESS_TOKEN_EXPIRY"},
+		{"jwt.refresh_token_expiry", "JWT_REFRESH_TOKEN_EXPIRY"},
 		{"jwt.issuer", "JWT_ISSUER"},
 		{"jwt.audience", "JWT_AUDIENCE"},
 		{"rate_limit.requests_per_second", "RATE_LIMIT_REQUESTS_PER_SECOND"},
@@ -352,26 +344,9 @@ func bindEnvs(v *viper.Viper) {
 
 // validate checks that critical configuration values are set correctly.
 func validate(cfg *Config) error {
-	if cfg.JWT.AccessSecret == "" {
-		cfg.JWT.AccessSecret = cfg.JWT.Secret
-	}
-	if cfg.JWT.RefreshSecret == "" {
-		cfg.JWT.RefreshSecret = cfg.JWT.Secret
-	}
-
-	if cfg.JWT.AccessSecret == "" {
-		return fmt.Errorf("JWT_ACCESS_SECRET is required")
-	}
-	if cfg.JWT.RefreshSecret == "" {
-		return fmt.Errorf("JWT_REFRESH_SECRET is required")
-	}
-
-	if cfg.App.Env == "production" {
-		if cfg.JWT.AccessSecret == "dev-access-secret-change-me" || cfg.JWT.AccessSecret == "dev-secret-change-me" {
-			return fmt.Errorf("JWT_ACCESS_SECRET must be set to a secure value in production")
-		}
-		if cfg.JWT.RefreshSecret == "dev-refresh-secret-change-me" || cfg.JWT.RefreshSecret == "dev-secret-change-me" {
-			return fmt.Errorf("JWT_REFRESH_SECRET must be set to a secure value in production")
+	if cfg.JWT.Secret == "" || cfg.JWT.Secret == "dev-secret-change-me" {
+		if cfg.App.Env == "production" {
+			return fmt.Errorf("JWT_SECRET must be set to a secure value in production")
 		}
 	}
 

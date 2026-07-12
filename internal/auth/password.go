@@ -6,9 +6,6 @@ import (
 	"guestflow/pkg/crypto"
 )
 
-// bcryptCost mirrors the cost used by the shared crypto package.
-const bcryptCost = 12
-
 // HashPassword hashes a plaintext password using bcrypt with cost 12.
 // Returns the bcrypt hash string which includes the salt and cost factor.
 // Delegates to the crypto package for the actual implementation.

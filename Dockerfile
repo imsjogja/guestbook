@@ -36,13 +36,6 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -o bin/migrate \
     ./cmd/migrate/main.go
 
-# Build the worker binary
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
-    -ldflags='-w -s -extldflags "-static"' \
-    -a -installsuffix cgo \
-    -o bin/worker \
-    ./cmd/worker/main.go
-
 # ------------------------------------------------------------------------------
 # Final Stage
 # ------------------------------------------------------------------------------
@@ -54,7 +47,6 @@ WORKDIR /app
 # Copy binary from builder
 COPY --from=builder /build/bin/server /app/server
 COPY --from=builder /build/bin/migrate /app/migrate
-COPY --from=builder /build/bin/worker /app/worker
 
 # Copy migration files
 COPY --from=builder /build/migrations /app/migrations
