@@ -1,140 +1,227 @@
 #!/usr/bin/env bash
-# GuestFlow Development Startup Script
-# Starts the application in development mode with hot reload support.
-# Requires: go, docker, docker-compose
+# =============================================================================
+# GuestFlow Development Script
+# =============================================================================
+# Quick-start helper for local development.
+#
+# Usage:
+#   ./scripts/dev.sh setup    # First-time setup (DB + migrations + seed)
+#   ./scripts/dev.sh server   # Start Go server
+#   ./scripts/dev.sh migrate  # Run database migrations
+#   ./scripts/dev.sh seed     # Insert demo data
+#   ./scripts/dev.sh worker   # Start background worker
+#   ./scripts/dev.sh test     # Run all tests
+#   ./scripts/dev.sh down     # Stop Docker services
+#   ./scripts/dev.sh reset    # Full reset (destroy all data)
+#
+# Prerequisites: Docker, Docker Compose, Go 1.22+
+# =============================================================================
 
 set -euo pipefail
 
-# Colors for output
+# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-APP_NAME="guestflow"
+# Project root
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$PROJECT_ROOT"
 
-# ------------------------------------------------------------------------------
+# Configuration
+DB_USER="${DB_USER:-guestflow}"
+DB_PASSWORD="${DB_PASSWORD:-guestflow}"
+DB_NAME="${DB_NAME:-guestflow}"
+DB_HOST="${DB_HOST:-localhost}"
+DB_PORT="${DB_PORT:-5432}"
+APP_PORT="${APP_PORT:-8080}"
+
 # Helper functions
-# ------------------------------------------------------------------------------
+log_info() { echo -e "${BLUE}[INFO]${NC} $*"; }
+log_ok()   { echo -e "${GREEN}[OK]${NC} $*"; }
+log_warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
+log_err()  { echo -e "${RED}[ERROR]${NC} $*"; }
 
-log_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
+wait_for_postgres() {
+    log_info "Waiting for PostgreSQL..."
+    local retries=30
+    while ! pg_isready -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" > /dev/null 2>&1; do
+        retries=$((retries - 1))
+        if [ $retries -eq 0 ]; then
+            log_err "PostgreSQL failed to start after 30 seconds"
+            exit 1
+        fi
+        sleep 1
+    done
+    log_ok "PostgreSQL is ready"
 }
 
-log_success() {
-    echo -e "${GREEN}[OK]${NC} $1"
+wait_for_redis() {
+    log_info "Waiting for Redis..."
+    local retries=30
+    while ! redis-cli -h "${REDIS_HOST:-localhost}" -p "${REDIS_PORT:-6379}" ping > /dev/null 2>&1; do
+        retries=$((retries - 1))
+        if [ $retries -eq 0 ]; then
+            log_err "Redis failed to start after 30 seconds"
+            exit 1
+        fi
+        sleep 1
+    done
+    log_ok "Redis is ready"
 }
 
-log_warn() {
-    echo -e "${YELLOW}[WARN]${NC} $1"
-}
+# =============================================================================
+# Commands
+# =============================================================================
 
-log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
+cmd_setup() {
+    log_info "Setting up GuestFlow development environment..."
 
-# Check if a command exists
-check_command() {
-    if ! command -v "$1" &> /dev/null; then
-        log_error "$1 is required but not installed."
+    # Check prerequisites
+    if ! command -v docker &> /dev/null; then
+        log_err "Docker is required but not installed."
         exit 1
+    fi
+
+    if ! command -v go &> /dev/null; then
+        log_err "Go is required but not installed. Get it from https://go.dev/dl/"
+        exit 1
+    fi
+
+    # Copy .env if not exists
+    if [ ! -f .env ]; then
+        cp .env.example .env
+        log_ok "Created .env from .env.example"
+    fi
+
+    # Start infrastructure
+    log_info "Starting Docker services (PostgreSQL, Redis)..."
+    docker compose up -d db redis
+
+    # Wait for services
+    wait_for_postgres
+    wait_for_redis
+
+    # Run migrations
+    cmd_migrate
+
+    # Seed data
+    cmd_seed
+
+    log_ok "Setup complete!"
+    log_info "Start the server with: ./scripts/dev.sh server"
+    log_info "Start the worker with: ./scripts/dev.sh worker"
+    echo ""
+    log_info "Demo credentials:"
+    echo "  Email:    demo@guestflow.id"
+    echo "  Password: password123"
+    echo "  Tenant:   demo-wo"
+}
+
+cmd_migrate() {
+    log_info "Running database migrations..."
+    go run cmd/migrate/main.go up
+    log_ok "Migrations applied successfully"
+}
+
+cmd_seed() {
+    log_info "Inserting demo data..."
+    PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" \
+        -f migrations/999_seed_data.up.sql 2>/dev/null || {
+        log_warn "Could not seed data automatically. Run manually:"
+        echo "  PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -f migrations/999_seed_data.up.sql"
+    }
+    log_ok "Demo data inserted"
+}
+
+cmd_server() {
+    log_info "Starting GuestFlow server on port $APP_PORT..."
+    log_info "API:       http://localhost:$APP_PORT/api/v1"
+    log_info "Admin:     http://localhost:$APP_PORT/admin"
+    log_info "Health:    http://localhost:$APP_PORT/health"
+    echo ""
+    go run cmd/server/main.go
+}
+
+cmd_worker() {
+    log_info "Starting background worker..."
+    go run cmd/worker/main.go -queues=all -concurrency=3
+}
+
+cmd_test() {
+    log_info "Running tests..."
+    go test -v ./tests/feature/... ./internal/auth/... ./internal/middleware/...
+    log_ok "Tests completed"
+}
+
+cmd_test_all() {
+    log_info "Running all tests with coverage..."
+    go test -race -coverprofile=coverage.out ./...
+    go tool cover -func=coverage.out | tail -1
+    log_ok "All tests completed"
+}
+
+cmd_down() {
+    log_info "Stopping Docker services..."
+    docker compose down
+    log_ok "Services stopped"
+}
+
+cmd_reset() {
+    log_warn "This will DESTROY all data in the database!"
+    read -p "Are you sure? [y/N] " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        docker compose down -v
+        docker volume rm guestflow_postgres_data guestflow_redis_data 2>/dev/null || true
+        log_ok "All data destroyed. Run './scripts/dev.sh setup' to start fresh."
+    else
+        log_info "Reset cancelled"
     fi
 }
 
-# Wait for a service to be available
-wait_for_service() {
-    local host=$1
-    local port=$2
-    local name=$3
-    local max_attempts=${4:-30}
-    local attempt=1
-
-    log_info "Waiting for ${name} at ${host}:${port}..."
-    while ! nc -z "${host}" "${port}" 2>/dev/null; do
-        if [ $attempt -ge $max_attempts ]; then
-            log_error "${name} did not start within ${max_attempts} seconds"
-            return 1
-        fi
-        attempt=$((attempt + 1))
-        sleep 1
-    done
-    log_success "${name} is ready"
+cmd_help() {
+    echo "GuestFlow Development Script"
+    echo ""
+    echo "Usage: ./scripts/dev.sh <command>"
+    echo ""
+    echo "Commands:"
+    echo "  setup    First-time environment setup"
+    echo "  server   Start Go server"
+    echo "  worker   Start background worker"
+    echo "  migrate  Run database migrations"
+    echo "  seed     Insert demo data"
+    echo "  test     Run feature tests"
+    echo "  test-all Run all tests with coverage"
+    echo "  down     Stop Docker services"
+    echo "  reset    Full reset (DESTROYS all data)"
+    echo "  help     Show this help"
+    echo ""
+    echo "Environment Variables:"
+    echo "  DB_HOST      Database host (default: localhost)"
+    echo "  DB_PORT      Database port (default: 5432)"
+    echo "  DB_USER      Database user (default: guestflow)"
+    echo "  DB_PASSWORD  Database password (default: guestflow)"
+    echo "  APP_PORT     Server port (default: 8080)"
 }
 
-# ------------------------------------------------------------------------------
+# =============================================================================
 # Main
-# ------------------------------------------------------------------------------
+# =============================================================================
 
-cd "${PROJECT_DIR}"
+COMMAND="${1:-help}"
 
-log_info "Starting GuestFlow development environment..."
-log_info "Project directory: ${PROJECT_DIR}"
-
-# Check prerequisites
-check_command go
-check_command docker
-check_command docker-compose
-
-# Load environment variables from .env if it exists
-if [ -f "${PROJECT_DIR}/.env" ]; then
-    log_info "Loading environment from .env"
-    set -a
-    # shellcheck source=/dev/null
-    source "${PROJECT_DIR}/.env"
-    set +a
-else
-    log_warn "No .env file found. Using defaults."
-    log_warn "Copy .env.example to .env and customize it for your setup."
-fi
-
-# Create uploads directory if it doesn't exist
-mkdir -p "${PROJECT_DIR}/uploads"
-
-# Start infrastructure services (Postgres, Redis)
-log_info "Starting infrastructure services..."
-docker-compose up -d postgres redis
-
-# Wait for services to be ready
-wait_for_service "${DB_HOST:-localhost}" "${DB_PORT:-5432}" "PostgreSQL"
-wait_for_service "${REDIS_HOST:-localhost}" "${REDIS_PORT:-6379}" "Redis"
-
-# Run database migrations
-log_info "Running database migrations..."
-if command -v goose &> /dev/null; then
-    goose -dir "${PROJECT_DIR}/migrations" postgres \
-        "postgres://${DB_USER:-guestflow}:${DB_PASSWORD:-changeme}@${DB_HOST:-localhost}:${DB_PORT:-5432}/${DB_NAME:-guestflow}?sslmode=disable" \
-        up
-    log_success "Migrations applied"
-else
-    log_warn "goose not installed. Attempting to install..."
-    go install github.com/pressly/goose/v3/cmd/goose@latest
-    goose -dir "${PROJECT_DIR}/migrations" postgres \
-        "postgres://${DB_USER:-guestflow}:${DB_PASSWORD:-changeme}@${DB_HOST:-localhost}:${DB_PORT:-5432}/${DB_NAME:-guestflow}?sslmode=disable" \
-        up
-    log_success "Migrations applied"
-fi
-
-# Check for air (hot reload tool)
-if command -v air &> /dev/null; then
-    log_info "Starting application with hot reload (air)..."
-    air
-else
-    log_warn "air not installed. Starting without hot reload."
-    log_info "Install air for hot reload: go install github.com/air-verse/air@latest"
-
-    # Set development environment variables
-    export APP_ENV=development
-    export APP_DEBUG=true
-    export LOG_LEVEL=debug
-    export LOG_FORMAT=text
-    export SERVER_HOST=0.0.0.0
-    export SERVER_PORT=8080
-    export DB_HOST=localhost
-    export REDIS_HOST=localhost
-
-    log_info "Starting Go server..."
-    go run ./cmd/server/main.go
-fi
+case "$COMMAND" in
+    setup)    cmd_setup ;;
+    server)   cmd_server ;;
+    worker)   cmd_worker ;;
+    migrate)  cmd_migrate ;;
+    seed)     cmd_seed ;;
+    test)     cmd_test ;;
+    test-all) cmd_test_all ;;
+    down)     cmd_down ;;
+    reset)    cmd_reset ;;
+    help|*)   cmd_help ;;
+esac

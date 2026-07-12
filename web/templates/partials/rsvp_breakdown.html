@@ -1,0 +1,32 @@
+{{/* HTMX partial: RSVP status breakdown fragment */}}
+<div style="display: flex; flex-direction: column; gap: 16px;">
+    {{- range .Statuses }}
+    <div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="width: 8px; height: 8px; border-radius: 50%; background: {{ .Color }};"></div>
+                <span style="font-size: 0.8125rem; font-weight: 500;">{{ .Label }}</span>
+            </div>
+            <span style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">{{ .Count }}</span>
+        </div>
+        <div class="progress" style="height: 6px;">
+            <div class="progress-bar" style="width: {{ .Percent }}%; background: {{ .Color }};"></div>
+        </div>
+        {{- if .Pax }}
+        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">{{ .Pax }} orang</div>
+        {{- end }}
+    </div>
+    {{- end }}
+
+    <div style="border-top: 1px solid var(--border); padding-top: 12px; margin-top: 4px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 0.8125rem; font-weight: 600;">Total Respons</span>
+            <span style="font-size: 0.875rem; font-weight: 700;">{{ .TotalResponses }}</span>
+        </div>
+        {{- if .ResponseRate }}
+        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
+            Tingkat respons: <strong>{{ .ResponseRate }}%</strong>
+        </div>
+        {{- end }}
+    </div>
+</div>

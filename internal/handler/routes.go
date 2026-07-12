@@ -5,6 +5,7 @@ import (
 	"guestflow/internal/middleware"
 	"guestflow/internal/rbac"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
 )
 
@@ -23,8 +24,10 @@ func RegisterRoutes(
 	communicationHandler *CommunicationHandler,
 	dashboardHandler *DashboardHandler,
 	invitationSiteHandler *InvitationSiteHandler,
+	htmxDashboardHandler *HTMXDashboardHandler,
 	jwtService *auth.JWTService,
 	rbacService *rbac.Service,
+	db *sqlx.DB,
 ) {
 	// Public API group.
 	api := e.Group("/api/v1")
@@ -159,6 +162,13 @@ func RegisterRoutes(
 	// RBAC middleware is injected but route-level enforcement
 	// is applied per-endpoint in production.
 	_ = rbacService
+
+	// ------------------------------------------------------------------
+	// HTMX fragment routes (protected, returns HTML partials)
+	// ------------------------------------------------------------------
+	if htmxDashboardHandler != nil {
+		htmxDashboardHandler.RegisterHTMXRoutes(e, middleware.JWTAuth(jwtService), middleware.TenantResolver(middleware.DefaultTenantResolverConfig(db)))
+	}
 
 	// ------------------------------------------------------------------
 	// Public-facing site routes (no authentication)

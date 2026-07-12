@@ -1,0 +1,27 @@
+{{/* HTMX partial: Check-in form response (success or error) */}}
+{{- if .Success }}
+<div id="checkin-response" style="padding: 20px; text-align: center; animation: fadeIn 0.3s ease;">
+    <div style="width: 56px; height: 56px; border-radius: 50%; background: rgba(16,185,129,0.1); display: flex; align-items: center; justify-content: center; font-size: 1.75rem; margin: 0 auto 12px;">✅</div>
+    <h3 style="font-size: 1.125rem; font-weight: 600; margin-bottom: 4px;">Check-in Berhasil!</h3>
+    <p style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 16px;">
+        {{ .GuestName }} - {{ .ActualPax }} orang
+    </p>
+    {{- if .CheckinNumber }}
+    <div style="font-size: 0.8125rem; color: var(--text-muted); margin-bottom: 4px;">Nomor Check-in</div>
+    <div style="font-size: 1.5rem; font-weight: 700; color: var(--primary); letter-spacing: 2px; font-variant-numeric: tabular-nums;">{{ .CheckinNumber }}</div>
+    {{- end }}
+</div>
+{{- else }}
+<div id="checkin-response" style="padding: 20px; text-align: center; animation: fadeIn 0.3s ease;">
+    <div style="width: 56px; height: 56px; border-radius: 50%; background: rgba(244,63,94,0.1); display: flex; align-items: center; justify-content: center; font-size: 1.75rem; margin: 0 auto 12px;">❌</div>
+    <h3 style="font-size: 1.125rem; font-weight: 600; margin-bottom: 4px;">Check-in Gagal</h3>
+    <p style="font-size: 0.875rem; color: var(--text-muted);">{{ .Error }}</p>
+</div>
+{{- end }}
+
+<style>
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+</style>

@@ -228,7 +228,7 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 	invitationSiteHandler := handler.NewInvitationSiteHandler(invitationService, rsvpService, eventService, guestService)
 
 	// =====================================================================
-	// Template Renderer for HTML views
+	// Template Renderer for HTML views (required for HTMX fragments)
 	// =====================================================================
 	renderer, err := handler.NewTemplateRenderer()
 	if err != nil {
@@ -238,12 +238,29 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 	}
 
 	// =====================================================================
+	// HTMX Dashboard Handler (for real-time HTML fragment updates)
+	// =====================================================================
+	var htmxDashboardHandler *handler.HTMXDashboardHandler
+	if renderer != nil {
+		htmxDashboardHandler = handler.NewHTMXDashboardHandler(
+			dashboardService,
+			checkinService,
+			guestService,
+			rsvpService,
+			renderer,
+		)
+		slog.Info("HTMX dashboard handler initialized")
+	} else {
+		slog.Warn("HTMX dashboard handler disabled: no template renderer available")
+	}
+
+	// =====================================================================
 	// Routes: Register all API routes via handler package
 	// =====================================================================
 	// Static assets
 	e.Static("/static", "web/static")
 
-	// Register all API routes
+	// Register all API routes (API + HTMX + public site)
 	handler.RegisterRoutes(
 		e,
 		authHandler,
@@ -258,8 +275,10 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 		communicationHandler,
 		dashboardHandler,
 		invitationSiteHandler,
+		htmxDashboardHandler,
 		jwtService,
 		rbacService,
+		db,
 	)
 
 	// Health checks (public)

@@ -7,6 +7,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/admin.css">
+    <!-- HTMX for dynamic server-rendered updates without full page reloads -->
+    <script src="https://unpkg.com/htmx.org@2.0.4" integrity="sha384-HGfztofotfshCVFez9fjBNjF4J+oVFy3Atm5oITdc25Ww4f0y1r0pf6C9pNouLHL" crossorigin="anonymous"></script>
 </head>
 <body>
 <div class="app">
@@ -75,7 +77,7 @@
             <div class="sidebar-section-title">Pengaturan</div>
             <a href="#team" class="sidebar-link">
                 <span class="sidebar-link-icon">⚙️</span>
-                Tim & Role
+                Tim &amp; Role
             </a>
             <a href="#settings" class="sidebar-link">
                 <span class="sidebar-link-icon">🔧</span>
@@ -101,6 +103,9 @@
     <header class="header">
         <h1 class="header-title">Dashboard</h1>
         <div class="header-actions">
+            <div id="connection-status" class="connection-indicator" title="Real-time connection">
+                <span class="pulse-dot"></span> Live
+            </div>
             <button class="header-btn" title="Notifikasi">🔔</button>
             <button class="header-btn" title="Bantuan">❓</button>
             <button class="header-btn" id="menuToggle" title="Menu">☰</button>
@@ -109,106 +114,116 @@
 
     <!-- Content -->
     <div class="content">
+        <!-- Event Selector Bar -->
+        <div class="event-bar" style="margin-bottom: 20px; padding: 12px 16px; background: white; border-radius: 12px; border: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 40px; height: 40px; border-radius: 10px; background: var(--primary); display: flex; align-items: center; justify-content: center; color: white; font-size: 1.25rem;">💒</div>
+                <div>
+                    <div style="font-weight: 600; font-size: 0.9375rem;">Pernikahan Adi &amp; Bella</div>
+                    <div style="font-size: 0.75rem; color: var(--text-muted);">14 September 2025 &middot; Ballroom Hotel Indonesia</div>
+                </div>
+            </div>
+            <span class="badge badge-green">Published</span>
+        </div>
+
         <!-- Stats Grid -->
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-header">
-                    <span class="stat-title">Total Undangan</span>
-                    <div class="stat-icon purple">💌</div>
+        <!-- HTMX: auto-refresh every 5 seconds for real-time stats -->
+        <div class="stats-grid"
+             id="stats-grid"
+             hx-get="/htmx/dashboard/TENANT_ID/EVENT_ID/stats"
+             hx-trigger="load, every 5s"
+             hx-swap="innerHTML"
+             hx-indicator="#stats-spinner">
+            <!-- Skeleton loading state -->
+            <div class="stat-card skeleton">
+                <div class="stat-header"><span class="stat-title">Total Undangan</span><div class="stat-icon purple">💌</div></div>
+                <div class="stat-value" style="background: linear-gradient(90deg, var(--skeleton) 25%, var(--skeleton-shine) 50%, var(--skeleton) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; width: 60px; height: 32px; border-radius: 6px;"></div>
+                <div class="stat-meta"><span>Memuat...</span></div>
+            </div>
+            <div class="stat-card skeleton">
+                <div class="stat-header"><span class="stat-title">RSVP Hadir</span><div class="stat-icon green">✅</div></div>
+                <div class="stat-value" style="background: linear-gradient(90deg, var(--skeleton) 25%, var(--skeleton-shine) 50%, var(--skeleton) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; width: 60px; height: 32px; border-radius: 6px;"></div>
+                <div class="stat-meta"><span>Memuat...</span></div>
+            </div>
+            <div class="stat-card skeleton">
+                <div class="stat-header"><span class="stat-title">Check-in</span><div class="stat-icon amber">📱</div></div>
+                <div class="stat-value" style="background: linear-gradient(90deg, var(--skeleton) 25%, var(--skeleton-shine) 50%, var(--skeleton) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; width: 60px; height: 32px; border-radius: 6px;"></div>
+                <div class="stat-meta"><span>Memuat...</span></div>
+            </div>
+            <div class="stat-card skeleton">
+                <div class="stat-header"><span class="stat-title">Belum Respons</span><div class="stat-icon rose">⏳</div></div>
+                <div class="stat-value" style="background: linear-gradient(90deg, var(--skeleton) 25%, var(--skeleton-shine) 50%, var(--skeleton) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; width: 60px; height: 32px; border-radius: 6px;"></div>
+                <div class="stat-meta"><span>Memuat...</span></div>
+            </div>
+            <div class="stat-card skeleton">
+                <div class="stat-header"><span class="stat-title">Walk-in</span><div class="stat-icon blue">🚶</div></div>
+                <div class="stat-value" style="background: linear-gradient(90deg, var(--skeleton) 25%, var(--skeleton-shine) 50%, var(--skeleton) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; width: 60px; height: 32px; border-radius: 6px;"></div>
+                <div class="stat-meta"><span>Memuat...</span></div>
+            </div>
+        </div>
+        <div id="stats-spinner" class="htmx-indicator" style="text-align: center; padding: 4px; font-size: 0.75rem; color: var(--text-muted);">
+            <span class="spinner"></span> Memperbarui...
+        </div>
+
+        <!-- Main Dashboard Grid -->
+        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px; margin-bottom: 20px;">
+            <!-- Recent Check-ins -->
+            <!-- HTMX: auto-refresh every 3 seconds for near real-time check-in feed -->
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Check-in Terbaru</h3>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <span class="badge badge-green" style="font-size: 0.6875rem; animation: pulse 2s infinite;">● Live</span>
+                        <a href="#checkin" class="btn btn-sm btn-secondary">Lihat Semua</a>
+                    </div>
                 </div>
-                <div class="stat-value" id="stat-invitations">0</div>
-                <div class="stat-meta">
-                    <span class="stat-change up">+12%</span>
-                    <span>dari minggu lalu</span>
+                <div class="card-body"
+                     id="recent-checkins-container"
+                     hx-get="/htmx/dashboard/TENANT_ID/EVENT_ID/checkins"
+                     hx-trigger="load, every 3s"
+                     hx-swap="innerHTML">
+                    <div style="padding: 32px; text-align: center; color: var(--text-muted); font-size: 0.875rem;">
+                        <span class="spinner"></span> Memuat data check-in...
+                    </div>
                 </div>
             </div>
 
-            <div class="stat-card">
-                <div class="stat-header">
-                    <span class="stat-title">RSVP Hadir</span>
-                    <div class="stat-icon green">✅</div>
+            <!-- RSVP Breakdown -->
+            <!-- HTMX: refresh every 10 seconds -->
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">RSVP Breakdown</h3>
                 </div>
-                <div class="stat-value" id="stat-attending">0</div>
-                <div class="stat-meta">
-                    <span class="stat-change up">+8%</span>
-                    <span>dari target</span>
-                </div>
-                <div class="progress">
-                    <div class="progress-bar green" style="width: 0%" id="progress-attending"></div>
-                </div>
-            </div>
-
-            <div class="stat-card">
-                <div class="stat-header">
-                    <span class="stat-title">Check-in</span>
-                    <div class="stat-icon amber">📱</div>
-                </div>
-                <div class="stat-value" id="stat-checkins">0</div>
-                <div class="stat-meta">
-                    <span class="stat-change up">Live</span>
-                    <span>real-time</span>
-                </div>
-                <div class="progress">
-                    <div class="progress-bar amber" style="width: 0%" id="progress-checkins"></div>
-                </div>
-            </div>
-
-            <div class="stat-card">
-                <div class="stat-header">
-                    <span class="stat-title">Belum Respons</span>
-                    <div class="stat-icon rose">⏳</div>
-                </div>
-                <div class="stat-value" id="stat-pending">0</div>
-                <div class="stat-meta">
-                    <span class="stat-change down">-3%</span>
-                    <span>follow-up</span>
-                </div>
-            </div>
-
-            <div class="stat-card">
-                <div class="stat-header">
-                    <span class="stat-title">Walk-in</span>
-                    <div class="stat-icon blue">🚶</div>
-                </div>
-                <div class="stat-value" id="stat-walkins">0</div>
-                <div class="stat-meta">
-                    <span class="badge badge-gray">Hari ini</span>
+                <div class="card-body"
+                     id="rsvp-breakdown-container"
+                     hx-get="/htmx/dashboard/TENANT_ID/EVENT_ID/rsvp"
+                     hx-trigger="load, every 10s"
+                     hx-swap="innerHTML">
+                    <div style="padding: 32px; text-align: center; color: var(--text-muted); font-size: 0.875rem;">
+                        <span class="spinner"></span> Memuat data RSVP...
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- Recent Activity + Quick Actions -->
+        <!-- Activity Feed + Quick Actions -->
         <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
-            <!-- Recent Check-ins -->
+            <!-- Activity Feed -->
+            <!-- HTMX: refresh every 5 seconds -->
             <div class="card">
                 <div class="card-header">
-                    <h3 class="card-title">Check-in Terbaru</h3>
-                    <a href="#checkin" class="btn btn-sm btn-secondary">Lihat Semua</a>
+                    <h3 class="card-title">Aktivitas Terbaru</h3>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn btn-sm btn-ghost" onclick="htmx.ajax('GET', '/htmx/dashboard/TENANT_ID/EVENT_ID/activity', '#activity-feed-container')">🔄 Refresh</button>
+                    </div>
                 </div>
-                <div class="card-body">
-                    <div class="table-container">
-                        <table class="table" id="recent-checkins">
-                            <thead>
-                                <tr>
-                                    <th>Tamu</th>
-                                    <th>Waktu</th>
-                                    <th>Gate</th>
-                                    <th>Pax</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td colspan="5">
-                                        <div class="empty-state">
-                                            <div class="empty-state-icon">📋</div>
-                                            <div class="empty-state-title">Belum ada check-in</div>
-                                            <div class="empty-state-desc">Data akan muncul saat tamu mulai check-in</div>
-                                        </div>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
+                <div class="card-body"
+                     id="activity-feed-container"
+                     hx-get="/htmx/dashboard/TENANT_ID/EVENT_ID/activity"
+                     hx-trigger="load, every 5s"
+                     hx-swap="innerHTML">
+                    <div style="padding: 32px; text-align: center; color: var(--text-muted); font-size: 0.875rem;">
+                        <span class="spinner"></span> Memuat aktivitas...
                     </div>
                 </div>
             </div>
@@ -402,10 +417,39 @@ document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') hideModal();
 });
 
-// Fetch dashboard data
-document.addEventListener('DOMContentLoaded', function() {
-    // TODO: Replace with actual API call
-    // fetchDashboardData();
+// HTMX event handlers for visual feedback
+document.body.addEventListener('htmx:beforeRequest', function(evt) {
+    // Show loading indicators
+    const indicator = evt.detail.elt.querySelector('.htmx-indicator, #stats-spinner');
+    if (indicator) indicator.style.display = 'block';
+});
+
+document.body.addEventListener('htmx:afterRequest', function(evt) {
+    // Hide loading indicators
+    const indicator = evt.detail.elt.querySelector('.htmx-indicator, #stats-spinner');
+    if (indicator) indicator.style.display = '';
+
+    // Update connection status
+    const statusEl = document.getElementById('connection-status');
+    if (statusEl) {
+        if (evt.detail.successful) {
+            statusEl.innerHTML = '<span class="pulse-dot"></span> Live';
+            statusEl.classList.remove('offline');
+        } else {
+            statusEl.innerHTML = '<span class="pulse-dot" style="background:#ef4444;"></span> Offline';
+            statusEl.classList.add('offline');
+        }
+    }
+});
+
+// Log HTMX errors for debugging
+document.body.addEventListener('htmx:responseError', function(evt) {
+    console.warn('HTMX request failed:', evt.detail);
+});
+
+// Handle HTMX swap errors gracefully
+document.body.addEventListener('htmx:swapError', function(evt) {
+    console.error('HTMX swap error:', evt.detail);
 });
 </script>
 

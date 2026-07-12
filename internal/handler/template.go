@@ -1,11 +1,12 @@
 // internal/handler/template.go
 //
-// Echo template renderer for HTML views.
+// Echo template renderer for HTML templates including HTMX partials.
 package handler
 
 import (
 	"html/template"
 	"io"
+	"path/filepath"
 
 	"github.com/labstack/echo/v4"
 )
@@ -15,12 +16,27 @@ type TemplateRenderer struct {
 	templates *template.Template
 }
 
-// NewTemplateRenderer loads all HTML templates from the web/templates directory.
+// NewTemplateRenderer loads all HTML templates from the web/templates directory
+// including nested partial templates used by HTMX.
 func NewTemplateRenderer() (*TemplateRenderer, error) {
+	// Parse root templates
 	tmpl, err := template.ParseGlob("web/templates/*.html")
 	if err != nil {
 		return nil, err
 	}
+
+	// Parse partial templates in subdirectories (e.g. web/templates/partials/*.html)
+	partialMatches, err := filepath.Glob("web/templates/*/*.html")
+	if err != nil {
+		return nil, err
+	}
+	if len(partialMatches) > 0 {
+		tmpl, err = tmpl.ParseFiles(partialMatches...)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return &TemplateRenderer{templates: tmpl}, nil
 }
 

@@ -1,0 +1,29 @@
+{{/* HTMX partial: Activity feed fragment (checkins + RSVPs + messages) */}}
+{{- if .Activities }}
+<div style="display: flex; flex-direction: column; gap: 0;">
+    {{- range .Activities }}
+    <div style="display: flex; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--border); {{- if eq .Type "checkin" }}background: rgba(16,185,129,0.03);{{- end }}">
+        <div style="width: 36px; height: 36px; border-radius: 50%; background: {{ .IconBg }}; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">
+            {{ .Icon }}
+        </div>
+        <div style="flex: 1; min-width: 0;">
+            <div style="font-size: 0.8125rem; line-height: 1.4;">
+                {{{ .Message }}}
+            </div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
+                {{ .TimeAgo }}
+                {{- if .Badge }}
+                <span class="badge badge-{{ .BadgeColor }}" style="margin-left: 8px;">{{ .Badge }}</span>
+                {{- end }}
+            </div>
+        </div>
+    </div>
+    {{- end }}
+</div>
+{{- else }}
+<div class="empty-state">
+    <div class="empty-state-icon">🔔</div>
+    <div class="empty-state-title">Belum ada aktivitas</div>
+    <div class="empty-state-desc">Aktivitas terbaru akan muncul di sini</div>
+</div>
+{{- end }}

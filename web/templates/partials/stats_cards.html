@@ -1,0 +1,26 @@
+{{/* HTMX partial: Stats cards fragment for admin dashboard */}}
+{{- range . }}
+<div class="stat-card">
+    <div class="stat-header">
+        <span class="stat-title">{{ .Title }}</span>
+        <div class="stat-icon {{ .Color }}">{{ .Icon }}</div>
+    </div>
+    <div class="stat-value">{{ .Value }}</div>
+    <div class="stat-meta">
+        {{- if .Change }}
+        <span class="stat-change {{ .ChangeDirection }}">{{ .Change }}</span>
+        {{- end }}
+        {{- if .Label }}
+        <span>{{ .Label }}</span>
+        {{- end }}
+        {{- if .Badge }}
+        <span class="badge badge-{{ .BadgeColor }}">{{ .Badge }}</span>
+        {{- end }}
+    </div>
+    {{- if .ProgressValue }}
+    <div class="progress">
+        <div class="progress-bar {{ .ProgressColor }}" style="width: {{ .ProgressValue }}%"></div>
+    </div>
+    {{- end }}
+</div>
+{{- end }}

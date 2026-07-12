@@ -1,0 +1,49 @@
+{{/* HTMX partial: Recent check-ins table fragment */}}
+{{- if .Checkins }}
+<table class="table">
+    <thead>
+        <tr>
+            <th>Tamu</th>
+            <th>Waktu</th>
+            <th>Gate</th>
+            <th>Pax</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody>
+        {{- range .Checkins }}
+        <tr>
+            <td>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div class="avatar">{{ .Initials }}</div>
+                    <div>
+                        <div style="font-weight: 500;">{{ .GuestName }}</div>
+                        {{- if .GuestType }}
+                        <div style="font-size: 0.75rem; color: var(--text-muted);">{{ .GuestType }}</div>
+                        {{- end }}
+                    </div>
+                </div>
+            </td>
+            <td style="font-size: 0.8125rem; color: var(--text-muted); white-space: nowrap;">{{ .CheckedAtFormatted }}</td>
+            <td><span class="badge badge-gray">{{ .Gate }}</span></td>
+            <td style="font-weight: 600;">{{ .ActualPax }}</td>
+            <td>
+                {{- if eq .Status "success" }}
+                <span class="badge badge-green">Sukses</span>
+                {{- else if eq .Status "duplicate" }}
+                <span class="badge badge-amber">Duplikat</span>
+                {{- else }}
+                <span class="badge badge-rose">{{ .Status }}</span>
+                {{- end }}
+            </td>
+        </tr>
+        {{- end }}
+    </tbody>
+</table>
+{{- else }}
+<div class="empty-state">
+    <div class="empty-state-icon">📋</div>
+    <div class="empty-state-title">Belum ada check-in</div>
+    <div class="empty-state-desc">Data akan muncul saat tamu mulai check-in</div>
+</div>
+{{- end }}

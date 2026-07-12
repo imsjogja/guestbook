@@ -1,0 +1,37 @@
+{{/* HTMX partial: Guest search results for inline check-in search */}}
+{{- if .Guests }}
+<div style="display: flex; flex-direction: column; gap: 2px;">
+    {{- range .Guests }}
+    <button type="button"
+            class="search-result-item"
+            onclick="selectGuestForCheckin('{{ .ID }}', '{{ .FullName }}', {{ .MaxPax }})"
+            style="width: 100%; text-align: left; padding: 12px 16px; border: none; background: transparent; cursor: pointer; border-radius: 8px; display: flex; align-items: center; gap: 12px; transition: background 0.15s;"
+            onmouseover="this.style.background='var(--bg-hover)'"
+            onmouseout="this.style.background='transparent'">
+        <div class="avatar" style="width: 36px; height: 36px; font-size: 0.8125rem;">{{ .Initials }}</div>
+        <div style="flex: 1; min-width: 0;">
+            <div style="font-weight: 500; font-size: 0.875rem;">{{ .FullName }}</div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); display: flex; gap: 8px; align-items: center;">
+                {{- if .Phone }}
+                <span>📱 {{ .Phone }}</span>
+                {{- end }}
+                {{- if .GuestType }}
+                <span class="badge badge-gray">{{ .GuestType }}</span>
+                {{- end }}
+            </div>
+        </div>
+        {{- if .CheckedIn }}
+        <span class="badge badge-green">Sudah Check-in</span>
+        {{- else }}
+        <span class="badge badge-blue">Pilih</span>
+        {{- end }}
+    </button>
+    {{- end }}
+</div>
+{{- else if .Query }}
+<div class="empty-state" style="padding: 24px;">
+    <div class="empty-state-icon">🔍</div>
+    <div class="empty-state-title">Tidak ditemukan</div>
+    <div class="empty-state-desc">Tidak ada tamu yang cocok dengan "{{ .Query }}"</div>
+</div>
+{{- end }}
