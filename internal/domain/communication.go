@@ -55,16 +55,16 @@ const (
 // CommunicationTemplate represents a message template
 type CommunicationTemplate struct {
 	TenantBase
-	Name        string   `db:"name" json:"name"`
-	Channel     string   `db:"channel" json:"channel"`                   // whatsapp, email, sms
-	Type        string   `db:"type" json:"type"`                         // message type
-	Subject     *string  `db:"subject" json:"subject,omitempty"`         // For email
-	Body        string   `db:"body" json:"body"`                         // Template body with {{variables}}
-	Variables   []string `db:"variables" json:"variables"`               // Available variables
-	IsActive    bool     `db:"is_active" json:"is_active"`               // Whether template is active
-	IsSystem    bool     `db:"is_system" json:"is_system"`               // System-provided template
-	Description *string  `db:"description" json:"description,omitempty"` // Human-readable description
-	Language    string   `db:"language" json:"language"`                 // e.g., 'id', 'en'
+	Name        string          `db:"name" json:"name"`
+	Channel     string          `db:"channel" json:"channel"`                   // whatsapp, email, sms
+	Type        string          `db:"type" json:"type"`                         // message type
+	Subject     *string         `db:"subject" json:"subject,omitempty"`         // For email
+	Body        string          `db:"body" json:"body"`                         // Template body with {{variables}}
+	Variables   JSONStringSlice `db:"variables" json:"variables"`               // Available variables
+	IsActive    bool            `db:"is_active" json:"is_active"`               // Whether template is active
+	IsSystem    bool            `db:"is_system" json:"is_system"`               // System-provided template
+	Description *string         `db:"description" json:"description,omitempty"` // Human-readable description
+	Language    string          `db:"language" json:"language"`                 // e.g., 'id', 'en'
 }
 
 // CommunicationCampaign represents a broadcast campaign

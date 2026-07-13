@@ -64,7 +64,7 @@ func (s *CommunicationService) CreateTemplate(ctx context.Context, tenantID uuid
 		Channel:   req.Channel,
 		Type:      req.Type,
 		Body:      req.Body,
-		Variables: req.Variables,
+		Variables: domain.JSONStringSlice(req.Variables),
 		IsActive:  true,
 		IsSystem:  false,
 		Language:  lang,
@@ -117,7 +117,7 @@ func (s *CommunicationService) UpdateTemplate(ctx context.Context, tenantID, tem
 		template.Body = req.Body
 	}
 	if req.Variables != nil {
-		template.Variables = req.Variables
+		template.Variables = domain.JSONStringSlice(req.Variables)
 	}
 	if req.Description != "" {
 		template.Description = &req.Description
