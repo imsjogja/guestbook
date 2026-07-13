@@ -9,33 +9,37 @@ import (
 	"guestflow/internal/audit"
 	"guestflow/internal/domain"
 	"guestflow/internal/repository"
+	"guestflow/pkg/crypto"
 
 	"github.com/google/uuid"
 )
 
 // CheckinService encapsulates business logic for check-in operations.
 type CheckinService struct {
-	checkinRepo *repository.CheckinRepository
-	guestRepo   *repository.GuestRepository
-	eventRepo   *repository.EventRepository
-	seatingRepo *repository.SeatingRepository
-	auditSvc    *audit.Service
+	checkinRepo    *repository.CheckinRepository
+	guestRepo      *repository.GuestRepository
+	invitationRepo *repository.InvitationRepository
+	eventRepo      *repository.EventRepository
+	seatingRepo    *repository.SeatingRepository
+	auditSvc       *audit.Service
 }
 
 // NewCheckinService creates a new CheckinService.
 func NewCheckinService(
 	checkinRepo *repository.CheckinRepository,
 	guestRepo *repository.GuestRepository,
+	invitationRepo *repository.InvitationRepository,
 	eventRepo *repository.EventRepository,
 	seatingRepo *repository.SeatingRepository,
 	auditSvc *audit.Service,
 ) *CheckinService {
 	return &CheckinService{
-		checkinRepo: checkinRepo,
-		guestRepo:   guestRepo,
-		eventRepo:   eventRepo,
-		seatingRepo: seatingRepo,
-		auditSvc:    auditSvc,
+		checkinRepo:    checkinRepo,
+		guestRepo:      guestRepo,
+		invitationRepo: invitationRepo,
+		eventRepo:      eventRepo,
+		seatingRepo:    seatingRepo,
+		auditSvc:       auditSvc,
 	}
 }
 
@@ -284,7 +288,7 @@ func (s *CheckinService) GetRecent(ctx context.Context, tenantID, eventID uuid.U
 // ─── Internal Helpers ─────────────────────────────────────────────────────────
 
 // performCheckin performs the actual check-in after all validations pass.
-func (s *CheckinService) performCheckin(ctx context.Context, tenantID, eventID, guestID, invitationID uuid.UUID, officerID *uuid.UUID, req domain.CheckinRequest) (*domain.Checkin, error) {
+func (s *CheckinService) performCheckin(ctx context.Context, tenantID, eventID, guestID uuid.UUID, invitationID *uuid.UUID, officerID *uuid.UUID, req domain.CheckinRequest) (*domain.Checkin, error) {
 	// Verify event exists
 	if _, err := s.eventRepo.GetByIDForTenant(ctx, eventID, tenantID); err != nil {
 		return nil, fmt.Errorf("perform checkin: event not found: %w", err)
@@ -341,17 +345,12 @@ func (s *CheckinService) performCheckin(ctx context.Context, tenantID, eventID, 
 		lonPtr = &req.Longitude
 	}
 
-	invitationIDPtr := &invitationID
-	if invitationID == uuid.Nil {
-		invitationIDPtr = nil
-	}
-
 	checkin := &domain.Checkin{
 		Base:           domain.NewBase(),
 		TenantID:       tenantID,
 		EventID:        eventID,
 		GuestID:        guestID,
-		InvitationID:   invitationIDPtr,
+		InvitationID:   invitationID,
 		Method:         req.Method,
 		Status:         domain.CheckinStatusSuccess,
 		DeviceID:       deviceIDPtr,
@@ -430,6 +429,17 @@ func (s *CheckinService) recordFailedCheckin(ctx context.Context, tenantID, even
 // findGuestByToken looks up a guest by a QR token.
 // In production, this would hash the token and look it up in a credentials table.
 func (s *CheckinService) findGuestByToken(ctx context.Context, tenantID uuid.UUID, token string) (*domain.Guest, error) {
+	if s.invitationRepo != nil {
+		tokenHash := crypto.SHA256Hash(token)
+		invitation, err := s.invitationRepo.GetByTokenHash(ctx, tokenHash)
+		if err == nil && invitation != nil {
+			guest, guestErr := s.guestRepo.GetByIDForTenant(ctx, tenantID, invitation.GuestID)
+			if guestErr == nil && guest != nil {
+				return guest, nil
+			}
+		}
+	}
+
 	// Try to find by exact phone match (tokens could encode phone numbers)
 	guest, err := s.guestRepo.FindByPhoneOrEmail(ctx, tenantID, token, "")
 	if err == nil && guest != nil {

@@ -151,22 +151,21 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 	// Dependency Injection: Layer 1 - Auth & RBAC Services
 	// =====================================================================
 	jwtService := auth.NewJWTService(
-		cfg.JWT.AccessSecret,
-		cfg.JWT.RefreshSecret,
-		cfg.JWT.AccessTTL,
-		cfg.JWT.RefreshTTL,
+		cfg.JWT.Secret,
+		cfg.JWT.Secret,
+		cfg.JWT.AccessTokenExpiry,
+		cfg.JWT.RefreshTokenExpiry,
 	)
-	refreshTokenService := auth.NewRefreshTokenService(db)
+	refreshSvc := auth.NewRefreshTokenService(db)
+	authService := service.NewAuthService(db, jwtService, refreshSvc)
 	rbacService := rbac.NewService(repository.NewTenantUserRepository(db))
 
 	// =====================================================================
 	// Dependency Injection: Layer 2 - Repositories
 	// =====================================================================
 	// Auth & Tenant
-	userRepo := repository.NewUserRepository(db)
 	tenantRepo := repository.NewTenantRepository(db)
 	tenantUserRepo := repository.NewTenantUserRepository(db)
-	refreshTokenRepo := repository.NewRefreshTokenRepository(db)
 	auditRepo := repository.NewAuditRepository(db)
 
 	// Event
@@ -198,16 +197,14 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 	// =====================================================================
 	// Dependency Injection: Layer 4 - Business Services
 	// =====================================================================
-	authService := service.NewAuthService(db, jwtService, refreshTokenService)
-	tenantService := service.NewTenantService(tenantRepo, tenantUserRepo, auditService)
+	tenantService := service.NewTenantService(tenantRepo, tenantUserRepo, repository.NewUserRepository(db), auditService)
 	eventService := service.NewEventService(eventRepo, eventSessionRepo, eventLocationRepo, auditService)
 	guestService := service.NewGuestService(guestRepo, householdRepo, guestTagRepo, auditService)
-	importService := service.NewImportService(guestRepo)
-	householdService := service.NewHouseholdService(householdRepo, guestRepo, auditService)
+	householdService := service.NewHouseholdService(householdRepo, auditService)
 	invitationService := service.NewInvitationService(invitationRepo, eventRepo, rsvpRepo, guestRepo, auditService)
-	rsvpService := service.NewRSVPService(rsvpRepo, eventRepo, invitationRepo, auditService)
-	checkinService := service.NewCheckinService(checkinRepo, guestRepo, eventRepo, seatingRepo, auditService)
-	seatingService := service.NewSeatingService(seatingRepo, eventRepo, guestRepo, auditService)
+	rsvpService := service.NewRSVPService(rsvpRepo, invitationRepo, eventRepo, auditService)
+	checkinService := service.NewCheckinService(checkinRepo, guestRepo, invitationRepo, eventRepo, seatingRepo, auditService)
+	seatingService := service.NewSeatingService(seatingRepo, guestRepo, checkinRepo, auditService)
 	commService := service.NewCommunicationService(commRepo, guestRepo, eventRepo)
 	dashboardService := service.NewDashboardService(db, eventRepo, rsvpRepo, checkinRepo, commRepo, seatingRepo)
 
@@ -217,7 +214,7 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 	authHandler := handler.NewAuthHandler(authService)
 	tenantHandler := handler.NewTenantHandler(tenantService)
 	eventHandler := handler.NewEventHandler(eventService)
-	guestHandler := handler.NewGuestHandler(guestService, importService)
+	guestHandler := handler.NewGuestHandler(guestService)
 	householdHandler := handler.NewHouseholdHandler(householdService)
 	invitationHandler := handler.NewInvitationHandler(invitationService)
 	rsvpHandler := handler.NewRSVPHandler(rsvpService, invitationService)
