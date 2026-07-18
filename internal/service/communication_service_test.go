@@ -3,7 +3,9 @@ package service
 import (
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/google/uuid"
 	"guestflow/internal/domain"
 )
 
@@ -30,5 +32,34 @@ func TestDefaultInvitationTemplates(t *testing.T) {
 	}
 	if !seenChannels[domain.ChannelWhatsApp] || !seenChannels[domain.ChannelEmail] {
 		t.Fatalf("default templates must include WhatsApp and email: %#v", seenChannels)
+	}
+}
+
+func TestBuildRenderVariablesUsesCanonicalInvitationURL(t *testing.T) {
+	guest := &domain.Guest{FullName: "Bambang Kusniawan", GuestType: "friend"}
+	event := &domain.Event{Name: "Acara Demo", StartDate: time.Date(2026, 7, 18, 19, 0, 0, 0, time.UTC)}
+	invitation := &domain.Invitation{
+		Base:  domain.Base{ID: uuid.New()},
+		Token: "opaque-token",
+		URL:   "https://guestflow.id/i/opaque-token",
+	}
+
+	vars := BuildRenderVariables(guest, event, invitation, "https://guestflow.id")
+	if got, want := vars["rsvp_link"], invitation.URL; got != want {
+		t.Fatalf("rsvp_link = %q, want %q", got, want)
+	}
+	if strings.Contains(vars["rsvp_link"], "/rsvp/") {
+		t.Fatalf("rsvp_link contains legacy path: %q", vars["rsvp_link"])
+	}
+}
+
+func TestBuildRenderVariablesNormalizesLegacyInvitationURL(t *testing.T) {
+	guest := &domain.Guest{FullName: "Bambang Kusniawan", GuestType: "friend"}
+	event := &domain.Event{Name: "Acara Demo", StartDate: time.Now()}
+	invitation := &domain.Invitation{Token: "opaque-token", URL: "https://guestflow.id/rsvp/opaque-token"}
+
+	vars := BuildRenderVariables(guest, event, invitation, "https://guestflow.id")
+	if got, want := vars["rsvp_link"], "https://guestflow.id/i/opaque-token"; got != want {
+		t.Fatalf("rsvp_link = %q, want %q", got, want)
 	}
 }

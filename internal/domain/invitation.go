@@ -13,6 +13,7 @@ const (
 	InvitationStatusOpened    = "opened"
 	InvitationStatusResponded = "responded"
 	InvitationStatusExpired   = "expired"
+	InvitationStatusFailed    = "failed"
 	InvitationStatusRevoked   = "revoked"
 )
 
@@ -24,6 +25,7 @@ func ValidInvitationStatuses() []string {
 		InvitationStatusOpened,
 		InvitationStatusResponded,
 		InvitationStatusExpired,
+		InvitationStatusFailed,
 		InvitationStatusRevoked,
 	}
 }
@@ -55,6 +57,7 @@ type Invitation struct {
 	PlusOneRequired bool       `db:"plus_one_required" json:"plus_one_required"`
 	Status          string     `db:"status" json:"status"`
 	SentAt          *time.Time `db:"sent_at" json:"sent_at,omitempty"`
+	FailedReason    *string    `db:"failed_reason" json:"failed_reason,omitempty"`
 	OpenedAt        *time.Time `db:"opened_at" json:"opened_at,omitempty"`
 	RevokedAt       *time.Time `db:"revoked_at" json:"revoked_at,omitempty"`
 	RevokedBy       *uuid.UUID `db:"revoked_by" json:"revoked_by,omitempty"`
