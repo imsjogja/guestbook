@@ -88,6 +88,7 @@ type Event struct {
 	EndDate           *time.Time `db:"end_date" json:"end_date,omitempty"`
 	RSVPDeadline      *time.Time `db:"rsvp_deadline" json:"rsvp_deadline,omitempty"`
 	Capacity          *int       `db:"capacity" json:"capacity,omitempty"`
+	GuestCount        int        `db:"guest_count" json:"guest_count"`
 	TargetInvites     *int       `db:"target_invites" json:"target_invites,omitempty"`
 	TargetAttendance  *int       `db:"target_attendance" json:"target_attendance,omitempty"`
 	PrimaryLocationID *uuid.UUID `db:"primary_location_id" json:"primary_location_id,omitempty"`

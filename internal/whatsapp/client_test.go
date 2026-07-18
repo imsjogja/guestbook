@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"guestflow/internal/config"
 )
@@ -67,6 +68,51 @@ func TestClientSendUsesBlastrHeadersAndPayload(t *testing.T) {
 	}
 	if receipt.HTTPStatus != http.StatusOK {
 		t.Fatalf("Send() HTTP status = %d, want %d", receipt.HTTPStatus, http.StatusOK)
+	}
+}
+
+func TestClientSendUsesProviderSuccessReceipt(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true,"senderId":"noreplay guestflow","to":"6281325308367","attemptedAt":"2026-07-18T15:23:18.383Z","sentAt":"2026-07-18T15:23:21.047Z"}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(config.WhatsAppConfig{Enabled: true, APIURL: server.URL, AccountToken: "account-token", SenderToken: "sender-token"})
+	receipt, err := client.Send(context.Background(), "+62 813 2530 8367", "Halo")
+	if err != nil {
+		t.Fatalf("Send() error = %v", err)
+	}
+	if receipt.SenderID != "noreplay guestflow" || receipt.SentAt == nil || receipt.AttemptedAt == nil {
+		t.Fatalf("receipt = %#v, want provider timestamps and sender", receipt)
+	}
+	wantSentAt, _ := time.Parse(time.RFC3339Nano, "2026-07-18T15:23:21.047Z")
+	if !receipt.SentAt.Equal(wantSentAt) {
+		t.Fatalf("sent at = %s, want %s", receipt.SentAt, wantSentAt)
+	}
+}
+
+func TestClientSendTreatsProviderOKFalseAsFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":false,"error":"Target number is not registered on WhatsApp"}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(config.WhatsAppConfig{Enabled: true, APIURL: server.URL, AccountToken: "account-token", SenderToken: "sender-token"})
+	receipt, err := client.Send(context.Background(), "081234567890", "Halo")
+	if err == nil {
+		t.Fatal("Send() error = nil, want provider rejection")
+	}
+	providerErr, ok := err.(*ProviderError)
+	if !ok {
+		t.Fatalf("Send() error type = %T, want *ProviderError", err)
+	}
+	if providerErr.StatusCode != http.StatusOK || providerErr.Message != "Target number is not registered on WhatsApp" {
+		t.Fatalf("provider error = %#v, want HTTP 200 and provider message", providerErr)
+	}
+	if receipt.HTTPStatus != http.StatusOK {
+		t.Fatalf("receipt HTTP status = %d, want %d", receipt.HTTPStatus, http.StatusOK)
 	}
 }
 

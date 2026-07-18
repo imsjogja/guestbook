@@ -51,8 +51,13 @@ func (r *EventRepository) Create(ctx context.Context, event *domain.Event) error
 func (r *EventRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Event, error) {
 	var event domain.Event
 	query := `
-		SELECT * FROM events
-		WHERE id = $1 AND deleted_at IS NULL
+		SELECT e.*, COALESCE((
+			SELECT COUNT(*) FROM event_guests eg
+			WHERE eg.event_id = e.id AND eg.tenant_id = e.tenant_id
+			  AND eg.status = 'active' AND eg.deleted_at IS NULL
+		), 0) AS guest_count
+		FROM events e
+		WHERE e.id = $1 AND e.deleted_at IS NULL
 	`
 	err := r.db.GetContext(ctx, &event, query, id)
 	if err != nil {
@@ -68,8 +73,13 @@ func (r *EventRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Ev
 func (r *EventRepository) GetByIDForTenant(ctx context.Context, id uuid.UUID, tenantID uuid.UUID) (*domain.Event, error) {
 	var event domain.Event
 	query := `
-		SELECT * FROM events
-		WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+		SELECT e.*, COALESCE((
+			SELECT COUNT(*) FROM event_guests eg
+			WHERE eg.event_id = e.id AND eg.tenant_id = e.tenant_id
+			  AND eg.status = 'active' AND eg.deleted_at IS NULL
+		), 0) AS guest_count
+		FROM events e
+		WHERE e.id = $1 AND e.tenant_id = $2 AND e.deleted_at IS NULL
 	`
 	err := r.db.GetContext(ctx, &event, query, id, tenantID)
 	if err != nil {
@@ -197,36 +207,36 @@ func (r *EventRepository) buildListQuery(tenantID uuid.UUID, filter domain.Event
 	var conditions []string
 	var args []interface{}
 
-	conditions = append(conditions, "tenant_id = $1 AND deleted_at IS NULL")
+	conditions = append(conditions, "e.tenant_id = $1 AND e.deleted_at IS NULL")
 	args = append(args, tenantID)
 
 	argIdx := 1
 
 	if filter.Status != "" {
 		argIdx++
-		conditions = append(conditions, fmt.Sprintf("status = $%d", argIdx))
+		conditions = append(conditions, fmt.Sprintf("e.status = $%d", argIdx))
 		args = append(args, filter.Status)
 	}
 
 	if filter.Type != "" {
 		argIdx++
-		conditions = append(conditions, fmt.Sprintf("type = $%d", argIdx))
+		conditions = append(conditions, fmt.Sprintf("e.type = $%d", argIdx))
 		args = append(args, filter.Type)
 	}
 
 	if filter.StartFrom != nil {
 		argIdx++
-		conditions = append(conditions, fmt.Sprintf("start_date >= $%d", argIdx))
+		conditions = append(conditions, fmt.Sprintf("e.start_date >= $%d", argIdx))
 		args = append(args, *filter.StartFrom)
 	}
 
 	if filter.StartTo != nil {
 		argIdx++
-		conditions = append(conditions, fmt.Sprintf("start_date <= $%d", argIdx))
+		conditions = append(conditions, fmt.Sprintf("e.start_date <= $%d", argIdx))
 		args = append(args, *filter.StartTo)
 	}
 
-	query := "SELECT * FROM events WHERE " + strings.Join(conditions, " AND ") + " ORDER BY start_date DESC"
+	query := "SELECT e.*, COALESCE((SELECT COUNT(*) FROM event_guests eg WHERE eg.event_id = e.id AND eg.tenant_id = e.tenant_id AND eg.status = 'active' AND eg.deleted_at IS NULL), 0) AS guest_count FROM events e WHERE " + strings.Join(conditions, " AND ") + " ORDER BY e.start_date DESC"
 
 	if filter.PerPage > 0 {
 		argIdx++
@@ -249,36 +259,36 @@ func (r *EventRepository) buildCountQuery(tenantID uuid.UUID, filter domain.Even
 	var conditions []string
 	var args []interface{}
 
-	conditions = append(conditions, "tenant_id = $1 AND deleted_at IS NULL")
+	conditions = append(conditions, "e.tenant_id = $1 AND e.deleted_at IS NULL")
 	args = append(args, tenantID)
 
 	argIdx := 1
 
 	if filter.Status != "" {
 		argIdx++
-		conditions = append(conditions, fmt.Sprintf("status = $%d", argIdx))
+		conditions = append(conditions, fmt.Sprintf("e.status = $%d", argIdx))
 		args = append(args, filter.Status)
 	}
 
 	if filter.Type != "" {
 		argIdx++
-		conditions = append(conditions, fmt.Sprintf("type = $%d", argIdx))
+		conditions = append(conditions, fmt.Sprintf("e.type = $%d", argIdx))
 		args = append(args, filter.Type)
 	}
 
 	if filter.StartFrom != nil {
 		argIdx++
-		conditions = append(conditions, fmt.Sprintf("start_date >= $%d", argIdx))
+		conditions = append(conditions, fmt.Sprintf("e.start_date >= $%d", argIdx))
 		args = append(args, *filter.StartFrom)
 	}
 
 	if filter.StartTo != nil {
 		argIdx++
-		conditions = append(conditions, fmt.Sprintf("start_date <= $%d", argIdx))
+		conditions = append(conditions, fmt.Sprintf("e.start_date <= $%d", argIdx))
 		args = append(args, *filter.StartTo)
 	}
 
-	query := "SELECT COUNT(*) FROM events WHERE " + strings.Join(conditions, " AND ")
+	query := "SELECT COUNT(*) FROM events e WHERE " + strings.Join(conditions, " AND ")
 
 	return query, args
 }

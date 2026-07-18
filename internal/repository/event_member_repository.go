@@ -167,7 +167,7 @@ func (r *EventMemberRepository) ListEventsByUser(ctx context.Context, tenantID, 
 	offsetArg := argIndex
 	args = append(args, (page-1)*perPage)
 	query := fmt.Sprintf(
-		"SELECT DISTINCT e.* FROM events e JOIN event_members em ON em.event_id = e.id WHERE %s ORDER BY e.start_date DESC LIMIT $%d OFFSET $%d",
+		"SELECT DISTINCT e.*, COALESCE((SELECT COUNT(*) FROM event_guests eg WHERE eg.event_id = e.id AND eg.tenant_id = e.tenant_id AND eg.status = 'active' AND eg.deleted_at IS NULL), 0) AS guest_count FROM events e JOIN event_members em ON em.event_id = e.id WHERE %s ORDER BY e.start_date DESC LIMIT $%d OFFSET $%d",
 		where, limitArg, offsetArg,
 	)
 

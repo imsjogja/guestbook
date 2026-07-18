@@ -484,12 +484,18 @@ func (s *CommunicationService) SendMessage(ctx context.Context, tenantID, eventI
 				if errors.As(sendErr, &providerErr) && providerErr.StatusCode > 0 {
 					providerHTTPStatus = &providerErr.StatusCode
 				}
-				_ = s.commRepo.UpdateMessageStatus(ctx, tenantID, msg.ID, domain.MessageStatusFailed, nil, nil, nil, &failedAt, &errorMessage, nil, providerHTTPStatus, nil)
+				if err := s.commRepo.UpdateMessageStatus(ctx, tenantID, msg.ID, domain.MessageStatusFailed, nil, nil, nil, &failedAt, &errorMessage, nil, providerHTTPStatus, nil); err != nil {
+					return nil, fmt.Errorf("record failed message %s: %w", msg.ID, err)
+				}
 				msg.Status = domain.MessageStatusFailed
 				msg.FailedAt = &failedAt
 				msg.ErrorMessage = &errorMessage
+				msg.ProviderHTTPStatus = providerHTTPStatus
 			} else {
 				sentAt := time.Now().UTC()
+				if receipt.SentAt != nil {
+					sentAt = receipt.SentAt.UTC()
+				}
 				var providerID *string
 				if receipt.ExternalID != "" {
 					providerID = &receipt.ExternalID
@@ -501,6 +507,7 @@ func (s *CommunicationService) SendMessage(ctx context.Context, tenantID, eventI
 				msg.Status = domain.MessageStatusSent
 				msg.SentAt = &sentAt
 				msg.ExternalID = providerID
+				msg.ProviderHTTPStatus = providerHTTPStatus
 			}
 		}
 
@@ -805,6 +812,9 @@ func (s *CommunicationService) SendCampaign(ctx context.Context, tenantID, event
 				continue
 			}
 			sentAt := time.Now().UTC()
+			if receipt.SentAt != nil {
+				sentAt = receipt.SentAt.UTC()
+			}
 			var providerID *string
 			if receipt.ExternalID != "" {
 				providerID = &receipt.ExternalID
