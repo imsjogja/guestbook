@@ -94,11 +94,11 @@ type RSVPDashboard struct {
 
 // RSVPSubmitRequest public form submission.
 type RSVPSubmitRequest struct {
-	Token              string      `json:"token" validate:"required"`
-	Status             string      `json:"status" validate:"required,oneof=attending not_attending maybe"`
-	AttendingPax       int         `json:"attending_pax" validate:"required,min=1"`
-	Adults             int         `json:"adults" validate:"omitempty,min=0"`
-	Children           int         `json:"children" validate:"omitempty,min=0"`
+	Token              string      `json:"token" form:"token" validate:"required"`
+	Status             string      `json:"status" form:"status" validate:"required,oneof=attending not_attending maybe"`
+	AttendingPax       int         `json:"attending_pax" form:"attending_pax" validate:"required,min=1"`
+	Adults             int         `json:"adults" form:"adults" validate:"omitempty,min=0"`
+	Children           int         `json:"children" form:"children" validate:"omitempty,min=0"`
 	AttendingSessions  []uuid.UUID `json:"attending_sessions,omitempty"`
 	MenuChoice         string      `json:"menu_choice,omitempty"`
 	Allergies          string      `json:"allergies,omitempty"`
