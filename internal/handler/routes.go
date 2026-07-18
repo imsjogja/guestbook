@@ -67,6 +67,7 @@ func RegisterRoutes(
 	tenantTeamRead := middleware.RequirePermission(rbacService, domain.PermTeamRead)
 	tenantTeamWrite := middleware.RequirePermission(rbacService, domain.PermTeamWrite)
 	tenantTeamInvite := middleware.RequirePermission(rbacService, domain.PermTeamInvite)
+	tenantCommunicationWrite := middleware.RequirePermission(rbacService, domain.PermCommunicationWrite)
 	tenants.POST("", tenantHandler.Create)
 	tenants.GET("", tenantHandler.List)
 	tenants.GET("/:id", tenantHandler.Get)
@@ -192,6 +193,7 @@ func RegisterRoutes(
 	// Communication template routes (protected, tenant-scoped).
 	templates := tenants.Group("/:id/templates")
 	templates.POST("", communicationHandler.CreateTemplate)
+	templates.POST("/defaults", communicationHandler.GenerateDefaultTemplates, tenantCommunicationWrite)
 	templates.GET("", communicationHandler.ListTemplates)
 	templates.GET("/:templateId", communicationHandler.GetTemplate)
 	templates.PATCH("/:templateId", communicationHandler.UpdateTemplate)

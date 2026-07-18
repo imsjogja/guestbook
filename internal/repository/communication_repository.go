@@ -68,6 +68,26 @@ func (r *CommunicationRepository) GetTemplate(ctx context.Context, tenantID, id 
 	return &template, nil
 }
 
+// GetTemplateByKey retrieves a system template by tenant, name, channel, and type.
+// The key keeps default-template generation idempotent without constraining custom templates.
+func (r *CommunicationRepository) GetTemplateByKey(ctx context.Context, tenantID uuid.UUID, name, channel, msgType string) (*domain.CommunicationTemplate, error) {
+	var template domain.CommunicationTemplate
+	query := `
+		SELECT * FROM communication_templates
+		WHERE tenant_id = $1 AND name = $2 AND channel = $3 AND type = $4
+		  AND is_system = TRUE AND deleted_at IS NULL
+		ORDER BY created_at ASC
+		LIMIT 1
+	`
+	if err := r.db.GetContext(ctx, &template, query, tenantID, name, channel, msgType); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, domain.ErrTemplateNotFound
+		}
+		return nil, fmt.Errorf("get template by key: %w", err)
+	}
+	return &template, nil
+}
+
 // UpdateTemplate modifies an existing template.
 func (r *CommunicationRepository) UpdateTemplate(ctx context.Context, template *domain.CommunicationTemplate) error {
 	query := `
@@ -94,6 +114,26 @@ func (r *CommunicationRepository) UpdateTemplate(ctx context.Context, template *
 		return fmt.Errorf("check update result: %w", err)
 	}
 	if rowsAffected == 0 {
+		return domain.ErrTemplateNotFound
+	}
+	return nil
+}
+
+// MarkTemplateSystem marks a tenant template as a system template.
+func (r *CommunicationRepository) MarkTemplateSystem(ctx context.Context, tenantID, templateID uuid.UUID) error {
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE communication_templates
+		SET is_system = TRUE, updated_at = NOW()
+		WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+	`, templateID, tenantID)
+	if err != nil {
+		return fmt.Errorf("mark template as system: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check system template update: %w", err)
+	}
+	if rows == 0 {
 		return domain.ErrTemplateNotFound
 	}
 	return nil

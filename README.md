@@ -286,6 +286,7 @@ OpenAPI 3.0 specification available at `docs/api/openapi.yaml`.
 | `POST` | `/api/v1/tenants/:id/guests/import` | Import CSV |
 | `POST` | `/api/v1/tenants/:id/events/:eventId/invitations` | Create invitations |
 | `GET`  | `/api/v1/tenants/:id/events/:eventId/invitations/:invitationId/qr` | Get QR code |
+| `POST` | `/api/v1/tenants/:id/templates/defaults` | Generate default WhatsApp and email invitation templates |
 | `POST` | `/api/v1/tenants/:id/events/:eventId/messages/send` | Send a WhatsApp template to one or more guests |
 | `POST` | `/api/v1/tenants/:id/events/:eventId/campaigns/:campaignId/launch` | Send a campaign to filtered guests |
 | `POST` | `/api/v1/rsvp` | Submit RSVP (public) |
@@ -307,6 +308,8 @@ All protected endpoints require:
 ### WhatsApp Delivery Flow
 
 WhatsApp delivery is available from the guest detail action, invitation row action, selected invitations, and communication campaigns. All paths use the same `messages/send` service so every delivery is logged per guest and the invitation status is updated when a message is accepted by Blastr.
+
+Every new tenant is automatically provisioned with the standard WhatsApp and email invitation templates. Adding another member to an existing tenant does not create duplicates; the generator endpoint can be called again safely if a tenant needs to repair or restore its defaults.
 
 ```json
 {

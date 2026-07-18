@@ -57,6 +57,20 @@ func (h *CommunicationHandler) CreateTemplate(c echo.Context) error {
 	return appresponse.Created(c, template)
 }
 
+// GenerateDefaultTemplates handles POST /api/v1/tenants/:id/templates/defaults.
+func (h *CommunicationHandler) GenerateDefaultTemplates(c echo.Context) error {
+	tenantID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return appresponse.BadRequest(c, "Invalid tenant ID")
+	}
+
+	templates, err := h.commService.GenerateDefaultInvitationTemplates(c.Request().Context(), tenantID)
+	if err != nil {
+		return appresponse.InternalError(c, "Failed to generate default invitation templates")
+	}
+	return appresponse.Success(c, templates)
+}
+
 // ListTemplates handles GET /api/v1/tenants/:id/templates - lists templates.
 func (h *CommunicationHandler) ListTemplates(c echo.Context) error {
 	tenantID, err := uuid.Parse(c.Param("id"))

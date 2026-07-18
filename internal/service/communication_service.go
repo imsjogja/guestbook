@@ -3,6 +3,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -24,6 +25,40 @@ type CommunicationService struct {
 	invitationRepo *repository.InvitationRepository
 	whatsapp       *whatsapp.Client
 	baseURL        string
+}
+
+// DefaultTemplateDefinition describes a system-provided invitation template.
+type DefaultTemplateDefinition struct {
+	Name        string
+	Channel     string
+	Type        string
+	Subject     string
+	Body        string
+	Variables   []string
+	Description string
+}
+
+// DefaultInvitationTemplates returns the built-in WhatsApp and email invitation templates.
+func DefaultInvitationTemplates() []DefaultTemplateDefinition {
+	return []DefaultTemplateDefinition{
+		{
+			Name:        "Undangan Standar WhatsApp",
+			Channel:     domain.ChannelWhatsApp,
+			Type:        domain.MsgTypeInvitation,
+			Body:        "Halo {{guest_name}},\n\nAnda kami undang ke acara {{event_name}} pada {{event_date}} pukul {{event_time}}.\n\nKonfirmasi kehadiran dan lihat detail undangan:\n{{rsvp_link}}\n\nTerima kasih.",
+			Variables:   []string{"guest_name", "event_name", "event_date", "event_time", "rsvp_link"},
+			Description: "Template undangan standar melalui WhatsApp.",
+		},
+		{
+			Name:        "Undangan Standar Email",
+			Channel:     domain.ChannelEmail,
+			Type:        domain.MsgTypeInvitation,
+			Subject:     "Undangan {{event_name}} untuk {{guest_name}}",
+			Body:        "<!doctype html><html><body><p>Halo {{guest_name}},</p><p>Dengan hormat, kami mengundang Anda ke acara <strong>{{event_name}}</strong>.</p><p>Tanggal: {{event_date}}<br>Waktu: {{event_time}}</p><p><a href=\"{{rsvp_link}}\">Lihat undangan dan konfirmasi kehadiran</a></p><p>Terima kasih.</p></body></html>",
+			Variables:   []string{"guest_name", "event_name", "event_date", "event_time", "rsvp_link"},
+			Description: "Template undangan standar melalui email.",
+		},
+	}
 }
 
 // NewCommunicationService creates a new CommunicationService.
@@ -95,6 +130,42 @@ func (s *CommunicationService) CreateTemplate(ctx context.Context, tenantID uuid
 	}
 
 	return template, nil
+}
+
+// GenerateDefaultInvitationTemplates ensures both default invitation templates exist for a tenant.
+func (s *CommunicationService) GenerateDefaultInvitationTemplates(ctx context.Context, tenantID uuid.UUID) ([]*domain.CommunicationTemplate, error) {
+	definitions := DefaultInvitationTemplates()
+	templates := make([]*domain.CommunicationTemplate, 0, len(definitions))
+	for _, definition := range definitions {
+		existing, err := s.commRepo.GetTemplateByKey(ctx, tenantID, definition.Name, definition.Channel, definition.Type)
+		if err == nil {
+			templates = append(templates, existing)
+			continue
+		}
+		if !errors.Is(err, domain.ErrTemplateNotFound) {
+			return nil, fmt.Errorf("find default template %s: %w", definition.Name, err)
+		}
+
+		template, err := s.CreateTemplate(ctx, tenantID, domain.CommunicationTemplateCreateRequest{
+			Name:        definition.Name,
+			Channel:     definition.Channel,
+			Type:        definition.Type,
+			Subject:     definition.Subject,
+			Body:        definition.Body,
+			Variables:   definition.Variables,
+			Description: definition.Description,
+			Language:    "id",
+		})
+		if err != nil {
+			return nil, fmt.Errorf("create default template %s: %w", definition.Name, err)
+		}
+		template.IsSystem = true
+		templates = append(templates, template)
+		if err := s.commRepo.MarkTemplateSystem(ctx, tenantID, template.ID); err != nil {
+			return nil, fmt.Errorf("mark default template %s as system: %w", definition.Name, err)
+		}
+	}
+	return templates, nil
 }
 
 // GetTemplate retrieves a template by ID.
