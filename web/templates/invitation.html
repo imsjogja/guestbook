@@ -220,7 +220,7 @@
                     <label class="form-label">{{ if eq .Language "id" }}Jumlah Tamu{{ else }}Number of Guests{{ end }}</label>
                     <select name="attending_pax" class="form-select">
                         {{ range .MaxPaxOptions }}
-                        <option value="{{ . }}">{{ . }} {{ if eq .Language "id" }}orang{{ else }}person(s){{ end }}</option>
+                        <option value="{{ . }}">{{ . }} {{ if eq $.Language "id" }}orang{{ else }}person(s){{ end }}</option>
                         {{ end }}
                     </select>
                 </div>
