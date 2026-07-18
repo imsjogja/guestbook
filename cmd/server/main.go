@@ -22,6 +22,7 @@ import (
 	"guestflow/internal/audit"
 	"guestflow/internal/auth"
 	"guestflow/internal/config"
+	"guestflow/internal/email"
 	"guestflow/internal/handler"
 	"guestflow/internal/middleware"
 	"guestflow/internal/rbac"
@@ -160,7 +161,8 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 		cfg.JWT.RefreshTokenExpiry,
 	)
 	refreshSvc := auth.NewRefreshTokenService(db)
-	authService := service.NewAuthService(db, jwtService, refreshSvc)
+	authMailer := email.NewSMTPMailer(cfg.Email)
+	authService := service.NewAuthService(db, jwtService, refreshSvc, authMailer, cfg.Email.Enabled, cfg.App.PublicURL)
 	rbacService := rbac.NewService(repository.NewTenantUserRepository(db))
 
 	// =====================================================================

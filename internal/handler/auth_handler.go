@@ -36,15 +36,25 @@ type authUserResponse struct {
 }
 
 type authResponse struct {
-	AccessToken  string           `json:"access_token"`
+	AccessToken  string           `json:"access_token,omitempty"`
 	TokenType    string           `json:"token_type"`
 	ExpiresIn    int              `json:"expires_in"`
 	RefreshToken string           `json:"refresh_token,omitempty"`
 	User         authUserResponse `json:"user"`
 }
 
+type registrationResponse struct {
+	Message                   string           `json:"message"`
+	EmailVerificationRequired bool             `json:"email_verification_required"`
+	User                      authUserResponse `json:"user"`
+}
+
 type refreshRequest struct {
 	RefreshToken string `json:"refresh_token" validate:"required"`
+}
+
+type emailRequest struct {
+	Email string `json:"email" validate:"required,email"`
 }
 
 func (h *AuthHandler) Register(c echo.Context) error {
@@ -61,7 +71,38 @@ func (h *AuthHandler) Register(c echo.Context) error {
 		return h.handleAuthError(c, err)
 	}
 
+	if tokens == nil {
+		return c.JSON(http.StatusCreated, registrationResponse{
+			Message:                   "registrasi berhasil. Silakan cek email untuk verifikasi akun.",
+			EmailVerificationRequired: true,
+			User:                      mapUserResponse(user),
+		})
+	}
 	return c.JSON(http.StatusCreated, buildAuthResponse(user, tokens))
+}
+
+func (h *AuthHandler) VerifyEmail(c echo.Context) error {
+	if err := h.authService.VerifyEmail(c.Request().Context(), c.QueryParam("token")); err != nil {
+		if errors.Is(err, service.ErrTokenInvalid) {
+			return c.JSON(http.StatusBadRequest, map[string]string{"message": "tautan verifikasi tidak valid atau sudah kedaluwarsa"})
+		}
+		return h.handleAuthError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]string{"message": "email berhasil diverifikasi"})
+}
+
+func (h *AuthHandler) ResendVerification(c echo.Context) error {
+	var req emailRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "invalid request body"})
+	}
+	if err := c.Validate(&req); err != nil {
+		return h.validationError(c, err)
+	}
+	if err := h.authService.ResendVerification(c.Request().Context(), req.Email); err != nil {
+		return h.handleAuthError(c, err)
+	}
+	return c.JSON(http.StatusAccepted, map[string]string{"message": "jika akun tersedia dan belum terverifikasi, email verifikasi telah dikirim ulang"})
 }
 
 func (h *AuthHandler) Login(c echo.Context) error {
@@ -131,6 +172,10 @@ func (h *AuthHandler) handleAuthError(c echo.Context, err error) error {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"message": "email atau kata sandi salah"})
 	case errors.Is(err, service.ErrUserInactive):
 		return c.JSON(http.StatusUnauthorized, map[string]string{"message": "akun tidak aktif"})
+	case errors.Is(err, service.ErrEmailNotVerified):
+		return c.JSON(http.StatusForbidden, map[string]string{"code": "EMAIL_NOT_VERIFIED", "message": "silakan verifikasi email sebelum masuk"})
+	case errors.Is(err, service.ErrEmailDelivery):
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"message": "akun dibuat, tetapi email verifikasi belum berhasil dikirim. Silakan coba kirim ulang."})
 	case errors.Is(err, service.ErrUserNotFound):
 		return c.JSON(http.StatusNotFound, map[string]string{"message": "user not found"})
 	case errors.Is(err, service.ErrTokenInvalid):

@@ -29,10 +29,11 @@ type Config struct {
 
 // AppConfig contains general application settings.
 type AppConfig struct {
-	Name    string `mapstructure:"name"`
-	Env     string `mapstructure:"env"`
-	Version string `mapstructure:"version"`
-	Debug   bool   `mapstructure:"debug"`
+	Name      string `mapstructure:"name"`
+	Env       string `mapstructure:"env"`
+	Version   string `mapstructure:"version"`
+	Debug     bool   `mapstructure:"debug"`
+	PublicURL string `mapstructure:"public_url"`
 }
 
 // DatabaseConfig contains PostgreSQL connection settings.
@@ -200,6 +201,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("app.env", "development")
 	v.SetDefault("app.version", "1.0.0")
 	v.SetDefault("app.debug", true)
+	v.SetDefault("app.public_url", "http://localhost:5173")
 
 	// Server defaults
 	v.SetDefault("server.host", "0.0.0.0")
@@ -280,6 +282,7 @@ func bindEnvs(v *viper.Viper) {
 		{"app.env", "APP_ENV"},
 		{"app.version", "APP_VERSION"},
 		{"app.debug", "APP_DEBUG"},
+		{"app.public_url", "APP_PUBLIC_URL"},
 		{"server.host", "SERVER_HOST"},
 		{"server.port", "SERVER_PORT"},
 		{"server.read_timeout", "SERVER_READ_TIMEOUT"},
