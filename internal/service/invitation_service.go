@@ -21,7 +21,7 @@ const (
 	invitationTokenBytes = 32
 
 	// invitationBaseURL is the base URL for invitation links.
-	invitationBaseURL = "https://app.guestflow.id/i"
+	invitationBaseURL = "https://guestflow.id/i"
 )
 
 // InvitationService encapsulates business logic for invitation operations.
