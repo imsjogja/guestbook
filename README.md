@@ -179,11 +179,29 @@ make dev
 
 ### Demo Credentials
 
-| Field | Value |
-|-------|-------|
-| Email | `demo@guestflow.id` |
-| Password | `password123` |
-| Tenant | `demo-wo` |
+All accounts below use password `password123` and belong to tenant `demo-wo`.
+These accounts are for local/demo testing only and must not be used in production.
+
+| Role | Email |
+|------|-------|
+| Tenant Owner | `owner@guestflow.id` |
+| Event Manager | `manager@guestflow.id` |
+| RSVP Officer | `rsvp@guestflow.id` |
+| Registration Officer | `registration@guestflow.id` |
+| Usher | `usher@guestflow.id` |
+| Gift Officer | `gift@guestflow.id` |
+| Viewer | `viewer@guestflow.id` |
+
+The original workspace account remains available as `demo@guestflow.id` with the
+same password. Its tenant membership is `Tenant Owner`.
+
+The role is assigned at tenant membership level. To inspect demo memberships:
+
+```bash
+curl http://localhost:8080/api/v1/tenants/TENANT_ID/users \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "X-Tenant-ID: TENANT_ID"
+```
 
 ### API Quick Test
 
