@@ -195,8 +195,10 @@ These accounts are for local/demo testing only and must not be used in productio
 The original workspace account remains available as `demo@guestflow.id` with the
 same password. Its tenant membership is `Tenant Owner`.
 
-Tenant membership determines who can access the workspace. Operational roles can
-then be assigned to individual events through `event_members`.
+Tenant membership determines who can access the workspace. Team members are added
+manually by a Tenant Owner with an initial password; the account is active and
+email-verified immediately. Operational roles can then be assigned to individual
+events through `event_members`.
 
 ### Role Scope
 
@@ -274,8 +276,11 @@ OpenAPI 3.0 specification available at `docs/api/openapi.yaml`.
 | `POST` | `/api/v1/auth/magic-link/consume` | Consume passwordless login token |
 | `POST` | `/api/v1/auth/logout` | Logout |
 | `GET`  | `/api/v1/auth/me` | Current user |
+| `PATCH` | `/api/v1/auth/me` | Update current user profile |
+| `PATCH` | `/api/v1/auth/me/password` | Change current user password |
 | `POST` | `/api/v1/tenants` | Create tenant |
 | `GET`  | `/api/v1/tenants/:id` | Get tenant |
+| `POST` | `/api/v1/tenants/:id/users` | Manually add an active, verified team member |
 | `GET`  | `/api/v1/tenants/:id/integrations/whatsapp` | Get masked WhatsApp integration status |
 | `PATCH` | `/api/v1/tenants/:id/integrations/whatsapp` | Save and apply WhatsApp credentials |
 | `GET`  | `/api/v1/tenants/:id/events` | List events |

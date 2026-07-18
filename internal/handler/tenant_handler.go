@@ -259,28 +259,27 @@ func (h *TenantHandler) ListUsers(c echo.Context) error {
 	return c.JSON(http.StatusOK, TenantResponse{Data: response})
 }
 
-// InviteUser handles POST /api/v1/tenants/:id/users/invite - invites a user.
-func (h *TenantHandler) InviteUser(c echo.Context) error {
+// AddUser handles POST /api/v1/tenants/:id/users - manually creates an active member.
+func (h *TenantHandler) AddUser(c echo.Context) error {
 	tenantID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, TenantResponse{Error: "invalid tenant id"})
 	}
 
-	var req domain.TenantInvitationRequest
+	var req domain.TenantMemberCreateRequest
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, TenantResponse{Error: "invalid request body"})
 	}
-
-	if req.Email == "" || req.Role == "" {
-		return c.JSON(http.StatusBadRequest, TenantResponse{Error: "email and role are required"})
+	if err := c.Validate(&req); err != nil {
+		return c.JSON(http.StatusUnprocessableEntity, TenantResponse{Error: "invalid member data"})
 	}
 
-	invitedBy, err := getUserIDFromEchoContext(c)
+	addedBy, err := getUserIDFromEchoContext(c)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, TenantResponse{Error: "unauthenticated"})
 	}
 
-	if err := h.tenantService.InviteUser(c.Request().Context(), tenantID, invitedBy, req.Email, req.Role); err != nil {
+	if err := h.tenantService.AddUser(c.Request().Context(), tenantID, addedBy, req); err != nil {
 		switch {
 		case errors.Is(err, domain.ErrInvalidRole):
 			return c.JSON(http.StatusBadRequest, TenantResponse{Error: "invalid role"})
@@ -288,16 +287,14 @@ func (h *TenantHandler) InviteUser(c echo.Context) error {
 			return c.JSON(http.StatusForbidden, TenantResponse{Error: "forbidden"})
 		case errors.Is(err, domain.ErrAlreadyExists):
 			return c.JSON(http.StatusConflict, TenantResponse{Error: "user is already a member"})
-		case errors.Is(err, domain.ErrUserNotFound):
-			return c.JSON(http.StatusNotFound, TenantResponse{Error: "user not found"})
 		case errors.Is(err, domain.ErrTenantNotFound):
 			return c.JSON(http.StatusNotFound, TenantResponse{Error: "tenant not found"})
 		default:
-			return c.JSON(http.StatusInternalServerError, TenantResponse{Error: "failed to invite user"})
+			return c.JSON(http.StatusInternalServerError, TenantResponse{Error: "failed to add user"})
 		}
 	}
 
-	return c.JSON(http.StatusOK, TenantResponse{Message: "invitation sent"})
+	return c.JSON(http.StatusCreated, TenantResponse{Message: "member added"})
 }
 
 // RemoveUser handles DELETE /api/v1/tenants/:id/users/:userId - removes a user.

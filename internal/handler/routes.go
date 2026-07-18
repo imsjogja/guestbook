@@ -60,6 +60,8 @@ func RegisterRoutes(
 	// Auth routes that require authentication.
 	authGroup.POST("/logout", authHandler.Logout, middleware.JWTAuth(jwtService))
 	authGroup.GET("/me", authHandler.Me, middleware.JWTAuth(jwtService))
+	authGroup.PATCH("/me", authHandler.UpdateMe, middleware.JWTAuth(jwtService))
+	authGroup.PATCH("/me/password", authHandler.ChangePassword, middleware.JWTAuth(jwtService))
 
 	// Tenant routes (protected).
 	tenants := protected.Group("/tenants")
@@ -67,7 +69,6 @@ func RegisterRoutes(
 	tenantEventWrite := middleware.RequirePermission(rbacService, domain.PermEventWrite)
 	tenantTeamRead := middleware.RequirePermission(rbacService, domain.PermTeamRead)
 	tenantTeamWrite := middleware.RequirePermission(rbacService, domain.PermTeamWrite)
-	tenantTeamInvite := middleware.RequirePermission(rbacService, domain.PermTeamInvite)
 	tenantCommunicationWrite := middleware.RequirePermission(rbacService, domain.PermCommunicationWrite)
 	tenantSettingsRead := middleware.RequirePermission(rbacService, domain.PermSettingsRead)
 	tenantSettingsWrite := middleware.RequirePermission(rbacService, domain.PermSettingsWrite)
@@ -77,7 +78,7 @@ func RegisterRoutes(
 	tenants.GET("/:id/access", tenantHandler.Access, tenantTeamRead)
 	tenants.PATCH("/:id", tenantHandler.Update)
 	tenants.GET("/:id/users", tenantHandler.ListUsers, tenantTeamRead)
-	tenants.POST("/:id/users/invite", tenantHandler.InviteUser, tenantTeamInvite)
+	tenants.POST("/:id/users", tenantHandler.AddUser, tenantTeamWrite)
 	tenants.DELETE("/:id/users/:userId", tenantHandler.RemoveUser, tenantTeamWrite)
 	tenants.PATCH("/:id/users/:userId/role", tenantHandler.UpdateUserRole, tenantTeamWrite)
 

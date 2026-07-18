@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"guestflow/internal/audit"
+	"guestflow/internal/auth"
 	"guestflow/internal/domain"
 	"guestflow/internal/repository"
 
@@ -201,52 +203,82 @@ func (s *TenantService) ListMembers(ctx context.Context, tenantID uuid.UUID) ([]
 	return records, nil
 }
 
-// InviteUser invites a user to a tenant by email address.
-func (s *TenantService) InviteUser(ctx context.Context, tenantID, invitedBy uuid.UUID, email, role string) error {
+// AddUser creates or reactivates a tenant member directly as an active,
+// email-verified account. This replaces the previous invitation flow.
+func (s *TenantService) AddUser(ctx context.Context, tenantID, addedBy uuid.UUID, req domain.TenantMemberCreateRequest) error {
 	// Validate role.
-	if !domain.IsValidRole(role) {
+	if !domain.IsValidRole(req.Role) {
 		return domain.ErrInvalidRole
 	}
 
-	// Prevent assigning tenant_owner via invite.
-	if role == domain.RoleTenantOwner {
+	// Prevent assigning tenant_owner to a new member.
+	if req.Role == domain.RoleTenantOwner {
 		return domain.ErrForbidden
 	}
 
 	// Verify tenant exists.
 	if _, err := s.tenantRepo.GetByID(ctx, tenantID); err != nil {
-		return fmt.Errorf("invite user: %w", err)
+		return fmt.Errorf("add user: %w", err)
 	}
 
-	user, err := s.userRepo.GetByEmail(ctx, email)
-	if err != nil {
-		if errors.Is(err, domain.ErrUserNotFound) {
-			return domain.ErrUserNotFound
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+	req.FullName = strings.TrimSpace(req.FullName)
+	req.Phone = strings.TrimSpace(req.Phone)
+	user, err := s.userRepo.GetByEmail(ctx, req.Email)
+	now := time.Now().UTC()
+	if errors.Is(err, domain.ErrUserNotFound) {
+		passwordHash, hashErr := auth.HashPassword(req.Password)
+		if hashErr != nil {
+			return fmt.Errorf("add user: hash password: %w", hashErr)
 		}
-		return fmt.Errorf("invite user: lookup user: %w", err)
+		user = &domain.User{
+			Base:            domain.NewBase(),
+			Email:           req.Email,
+			PasswordHash:    passwordHash,
+			FullName:        req.FullName,
+			Phone:           optionalString(req.Phone),
+			EmailVerifiedAt: &now,
+			Status:          domain.UserStatusActive,
+		}
+		if err := s.userRepo.Create(ctx, user); err != nil {
+			return fmt.Errorf("add user: create account: %w", err)
+		}
+	} else if err != nil {
+		return fmt.Errorf("add user: lookup account: %w", err)
+	} else {
+		// Existing accounts keep their password, but become verified and active
+		// when an owner explicitly adds them to this tenant.
+		user.EmailVerifiedAt = &now
+		if user.Status != domain.UserStatusActive {
+			user.Status = domain.UserStatusActive
+		}
+		if err := s.userRepo.Update(ctx, user); err != nil {
+			return fmt.Errorf("add user: activate account: %w", err)
+		}
 	}
 
-	// Check if membership already exists.
+	// Check active memberships before upserting an inactive one.
 	existing, err := s.tenantUserRepo.Get(ctx, tenantID, user.ID)
 	if err == nil && existing != nil {
 		return domain.ErrAlreadyExists
 	}
 	if err != nil && !errors.Is(err, domain.ErrMembershipNotFound) {
-		return fmt.Errorf("invite user: check membership: %w", err)
+		return fmt.Errorf("add user: check membership: %w", err)
 	}
 
-	membership := domain.NewTenantMembership(tenantID, user.ID, role, &invitedBy)
-	membership.Status = domain.MembershipStatusPending
-	membership.JoinedAt = nil
+	membership := domain.NewTenantMembership(tenantID, user.ID, req.Role, &addedBy)
+	membership.Status = domain.MembershipStatusActive
+	membership.JoinedAt = &now
 
-	if err := s.tenantUserRepo.Create(ctx, membership); err != nil {
-		return fmt.Errorf("invite user: create membership: %w", err)
+	if err := s.tenantUserRepo.UpsertActive(ctx, membership); err != nil {
+		return fmt.Errorf("add user: create membership: %w", err)
 	}
 
 	// Audit log.
-	_ = s.audit.LogWithUser(ctx, invitedBy, tenantID, domain.AuditActionInvite, domain.EntityTypeMembership, tenantID, nil, map[string]interface{}{
-		"email": email,
-		"role":  role,
+	_ = s.audit.LogWithUser(ctx, addedBy, tenantID, domain.AuditActionCreate, domain.EntityTypeMembership, tenantID, nil, map[string]interface{}{
+		"email":  req.Email,
+		"role":   req.Role,
+		"status": domain.MembershipStatusActive,
 	})
 
 	return nil

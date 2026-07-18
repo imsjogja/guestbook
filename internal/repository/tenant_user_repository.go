@@ -40,6 +40,31 @@ func (r *TenantUserRepository) Create(ctx context.Context, membership *domain.Te
 	return nil
 }
 
+// UpsertActive creates or reactivates a tenant membership for a manually added user.
+func (r *TenantUserRepository) UpsertActive(ctx context.Context, membership *domain.TenantMembership) error {
+	query := `
+		INSERT INTO tenant_users (
+			id, tenant_id, user_id, role, invited_by, invited_at, joined_at, status,
+			created_at, updated_at
+		) VALUES (
+			:id, :tenant_id, :user_id, :role, :invited_by, :invited_at, :joined_at, :status,
+			:created_at, :updated_at
+		)
+		ON CONFLICT (tenant_id, user_id) DO UPDATE SET
+			role = EXCLUDED.role,
+			invited_by = EXCLUDED.invited_by,
+			invited_at = EXCLUDED.invited_at,
+			joined_at = EXCLUDED.joined_at,
+			status = EXCLUDED.status,
+			updated_at = EXCLUDED.updated_at
+	`
+	_, err := r.db.NamedExecContext(ctx, query, membership)
+	if err != nil {
+		return fmt.Errorf("failed to upsert tenant membership: %w", err)
+	}
+	return nil
+}
+
 // Get retrieves a specific membership by tenant ID and user ID.
 func (r *TenantUserRepository) Get(ctx context.Context, tenantID, userID uuid.UUID) (*domain.TenantMembership, error) {
 	var membership domain.TenantMembership

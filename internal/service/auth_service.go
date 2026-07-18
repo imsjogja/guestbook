@@ -26,6 +26,7 @@ import (
 var (
 	ErrEmailExists        = errors.New("email already registered")
 	ErrInvalidCredentials = errors.New("invalid email or password")
+	ErrPasswordInvalid    = errors.New("current password is invalid")
 	ErrUserNotFound       = errors.New("user not found")
 	ErrUserInactive       = errors.New("user account is inactive")
 	ErrTokenInvalid       = errors.New("invalid or expired token")
@@ -472,4 +473,71 @@ func (s *AuthService) Me(ctx context.Context, userID uuid.UUID) (*domain.User, e
 	}
 	user.Sanitize()
 	return user, nil
+}
+
+// UpdateProfile persists the editable profile fields for the authenticated user.
+func (s *AuthService) UpdateProfile(ctx context.Context, userID uuid.UUID, req domain.UserProfileUpdateRequest) (*domain.User, error) {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get profile: %w", err)
+	}
+
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+	req.FullName = strings.TrimSpace(req.FullName)
+	req.Phone = strings.TrimSpace(req.Phone)
+	req.Position = strings.TrimSpace(req.Position)
+	req.Bio = strings.TrimSpace(req.Bio)
+	if req.Email != user.Email {
+		exists, err := s.userRepo.EmailExists(ctx, req.Email)
+		if err != nil {
+			return nil, fmt.Errorf("check profile email: %w", err)
+		}
+		if exists {
+			return nil, ErrEmailExists
+		}
+	}
+
+	user.Email = req.Email
+	user.FullName = req.FullName
+	user.Phone = optionalString(req.Phone)
+	user.Position = optionalString(req.Position)
+	user.Bio = optionalString(req.Bio)
+	user.UpdatedAt = time.Now().UTC()
+	if err := s.userRepo.Update(ctx, user); err != nil {
+		return nil, fmt.Errorf("update profile: %w", err)
+	}
+
+	user.Sanitize()
+	return user, nil
+}
+
+// ChangePassword verifies the current password, stores a new hash, and
+// invalidates refresh sessions so the credential change applies everywhere.
+func (s *AuthService) ChangePassword(ctx context.Context, userID uuid.UUID, req domain.ChangePasswordRequest) error {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("get user for password change: %w", err)
+	}
+	if !auth.CheckPassword(req.CurrentPassword, user.PasswordHash) {
+		return ErrPasswordInvalid
+	}
+
+	passwordHash, err := auth.HashPassword(req.NewPassword)
+	if err != nil {
+		return fmt.Errorf("hash new password: %w", err)
+	}
+	if err := s.userRepo.UpdatePassword(ctx, userID, passwordHash); err != nil {
+		return fmt.Errorf("persist new password: %w", err)
+	}
+	if err := s.refreshSvc.RevokeAllUserTokens(ctx, userID); err != nil {
+		return fmt.Errorf("revoke old sessions: %w", err)
+	}
+	return nil
+}
+
+func optionalString(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
 }

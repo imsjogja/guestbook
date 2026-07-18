@@ -144,10 +144,10 @@ func (s *RefreshTokenService) RevokeAllUserTokens(ctx context.Context, userID uu
 
 	query := `
 		UPDATE refresh_tokens
-		SET revoked_at = $1, revoked_by = $1
-		WHERE user_id = $2 AND revoked_at IS NULL
+		SET revoked_at = $1, revoked_by = $2
+		WHERE user_id = $3 AND revoked_at IS NULL
 	`
-	_, err := s.db.ExecContext(ctx, query, now, userID)
+	_, err := s.db.ExecContext(ctx, query, now, userID, userID)
 	if err != nil {
 		return fmt.Errorf("revoke all user tokens: %w", err)
 	}

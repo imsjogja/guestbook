@@ -31,9 +31,9 @@ func NewUserRepository(db *sqlx.DB) *UserRepository {
 // Returns an error if the email already exists or database insertion fails.
 func (r *UserRepository) Create(ctx context.Context, user *domain.User) error {
 	query := `
-		INSERT INTO users (id, email, password_hash, full_name, phone, avatar_url, 
+		INSERT INTO users (id, email, password_hash, full_name, phone, position, bio, avatar_url,
 		                   email_verified_at, mfa_enabled, status, created_at, updated_at, deleted_at)
-		VALUES (:id, :email, :password_hash, :full_name, :phone, :avatar_url,
+		VALUES (:id, :email, :password_hash, :full_name, :phone, :position, :bio, :avatar_url,
 		        :email_verified_at, :mfa_enabled, :status, :created_at, :updated_at, :deleted_at)
 	`
 	_, err := r.db.NamedExecContext(ctx, query, user)
@@ -48,7 +48,7 @@ func (r *UserRepository) Create(ctx context.Context, user *domain.User) error {
 func (r *UserRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error) {
 	var user domain.User
 	query := `
-		SELECT id, email, password_hash, full_name, phone, avatar_url,
+		SELECT id, email, password_hash, full_name, phone, position, bio, avatar_url,
 		       email_verified_at, mfa_enabled, status, created_at, updated_at, deleted_at
 		FROM users
 		WHERE id = $1 AND deleted_at IS NULL
@@ -69,7 +69,7 @@ func (r *UserRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Use
 func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
 	var user domain.User
 	query := `
-		SELECT id, email, password_hash, full_name, phone, avatar_url,
+		SELECT id, email, password_hash, full_name, phone, position, bio, avatar_url,
 		       email_verified_at, mfa_enabled, status, created_at, updated_at, deleted_at
 		FROM users
 		WHERE email = $1 AND deleted_at IS NULL
@@ -94,6 +94,8 @@ func (r *UserRepository) Update(ctx context.Context, user *domain.User) error {
 		    password_hash = :password_hash,
 		    full_name = :full_name,
 		    phone = :phone,
+		    position = :position,
+		    bio = :bio,
 		    avatar_url = :avatar_url,
 		    email_verified_at = :email_verified_at,
 		    mfa_enabled = :mfa_enabled,

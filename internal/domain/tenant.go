@@ -33,10 +33,13 @@ type TenantUpdateRequest struct {
 	Settings     JSONMap `json:"settings,omitempty"`
 }
 
-// TenantInvitationRequest is the input for inviting a user to a tenant.
-type TenantInvitationRequest struct {
-	Email string `json:"email" validate:"required,email"`
-	Role  string `json:"role" validate:"required"`
+// TenantMemberCreateRequest is the input for manually adding an active member.
+type TenantMemberCreateRequest struct {
+	FullName string `json:"full_name" validate:"required,min=2,max=255"`
+	Email    string `json:"email" validate:"required,email"`
+	Password string `json:"password" validate:"required,min=8"`
+	Phone    string `json:"phone,omitempty" validate:"omitempty,max=32"`
+	Role     string `json:"role" validate:"required"`
 }
 
 // TenantRoleUpdateRequest is the input for updating a member's role.

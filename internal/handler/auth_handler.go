@@ -29,6 +29,9 @@ type authUserResponse struct {
 	ID        string `json:"id"`
 	Email     string `json:"email"`
 	FullName  string `json:"fullName"`
+	Phone     string `json:"phone,omitempty"`
+	Position  string `json:"position,omitempty"`
+	Bio       string `json:"bio,omitempty"`
 	Role      string `json:"role"`
 	Avatar    string `json:"avatar,omitempty"`
 	CreatedAt string `json:"createdAt"`
@@ -236,12 +239,55 @@ func (h *AuthHandler) Me(c echo.Context) error {
 	})
 }
 
+func (h *AuthHandler) UpdateMe(c echo.Context) error {
+	userID := middleware.GetUserID(c)
+	if userID == uuid.Nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"message": "unauthenticated"})
+	}
+
+	var req domain.UserProfileUpdateRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "invalid request body"})
+	}
+	if err := c.Validate(&req); err != nil {
+		return h.validationError(c, err)
+	}
+
+	user, err := h.authService.UpdateProfile(c.Request().Context(), userID, req)
+	if err != nil {
+		return h.handleAuthError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]authUserResponse{"user": mapUserResponse(user)})
+}
+
+func (h *AuthHandler) ChangePassword(c echo.Context) error {
+	userID := middleware.GetUserID(c)
+	if userID == uuid.Nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"message": "unauthenticated"})
+	}
+
+	var req domain.ChangePasswordRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "invalid request body"})
+	}
+	if err := c.Validate(&req); err != nil {
+		return h.validationError(c, err)
+	}
+
+	if err := h.authService.ChangePassword(c.Request().Context(), userID, req); err != nil {
+		return h.handleAuthError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]string{"message": "kata sandi berhasil diubah. Silakan masuk kembali."})
+}
+
 func (h *AuthHandler) handleAuthError(c echo.Context, err error) error {
 	switch {
 	case errors.Is(err, service.ErrEmailExists):
 		return c.JSON(http.StatusConflict, map[string]string{"message": "email already registered"})
 	case errors.Is(err, service.ErrInvalidCredentials):
 		return c.JSON(http.StatusUnauthorized, map[string]string{"message": "email atau kata sandi salah"})
+	case errors.Is(err, service.ErrPasswordInvalid):
+		return c.JSON(http.StatusUnauthorized, map[string]string{"message": "kata sandi saat ini salah"})
 	case errors.Is(err, service.ErrUserInactive):
 		return c.JSON(http.StatusUnauthorized, map[string]string{"message": "akun tidak aktif"})
 	case errors.Is(err, service.ErrEmailNotVerified):
@@ -287,11 +333,26 @@ func mapUserResponse(user *domain.User) authUserResponse {
 	if user.AvatarURL != nil {
 		avatar = *user.AvatarURL
 	}
+	phone := ""
+	if user.Phone != nil {
+		phone = *user.Phone
+	}
+	position := ""
+	if user.Position != nil {
+		position = *user.Position
+	}
+	bio := ""
+	if user.Bio != nil {
+		bio = *user.Bio
+	}
 
 	return authUserResponse{
 		ID:        user.ID.String(),
 		Email:     user.Email,
 		FullName:  user.FullName,
+		Phone:     phone,
+		Position:  position,
+		Bio:       bio,
 		Role:      "viewer",
 		Avatar:    avatar,
 		CreatedAt: user.CreatedAt.UTC().Format(time.RFC3339),
