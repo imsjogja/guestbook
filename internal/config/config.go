@@ -101,6 +101,8 @@ func (s ServerConfig) ListenAddr() string {
 type WhatsAppConfig struct {
 	Enabled            bool   `mapstructure:"enabled"`
 	APIURL             string `mapstructure:"api_url"`
+	AccountToken       string `mapstructure:"account_token"`
+	SenderToken        string `mapstructure:"sender_token"`
 	PhoneNumberID      string `mapstructure:"phone_number_id"`
 	AccessToken        string `mapstructure:"access_token"`
 	WebhookVerifyToken string `mapstructure:"webhook_verify_token"`
@@ -245,7 +247,7 @@ func setDefaults(v *viper.Viper) {
 
 	// WhatsApp defaults
 	v.SetDefault("whatsapp.enabled", false)
-	v.SetDefault("whatsapp.api_url", "https://graph.facebook.com/v18.0")
+	v.SetDefault("whatsapp.api_url", "https://app.blastr.id/api/pub/send")
 
 	// Email defaults
 	v.SetDefault("email.enabled", false)
@@ -315,6 +317,8 @@ func bindEnvs(v *viper.Viper) {
 		{"rate_limit.ttl", "RATE_LIMIT_TTL"},
 		{"whatsapp.enabled", "WHATSAPP_ENABLED"},
 		{"whatsapp.api_url", "WHATSAPP_API_URL"},
+		{"whatsapp.account_token", "WHATSAPP_ACCOUNT_TOKEN"},
+		{"whatsapp.sender_token", "WHATSAPP_SENDER_TOKEN"},
 		{"whatsapp.phone_number_id", "WHATSAPP_PHONE_NUMBER_ID"},
 		{"whatsapp.access_token", "WHATSAPP_ACCESS_TOKEN"},
 		{"whatsapp.webhook_verify_token", "WHATSAPP_WEBHOOK_VERIFY_TOKEN"},

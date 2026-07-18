@@ -119,3 +119,11 @@ func ValidationError(c echo.Context, message string, details ...apperrors.ErrorD
 func InternalError(c echo.Context, message string) error {
 	return Error(c, apperrors.Internal(message))
 }
+
+// ServiceUnavailable sends a 503 response for temporarily unavailable integrations.
+func ServiceUnavailable(c echo.Context, message string) error {
+	return c.JSON(http.StatusServiceUnavailable, ErrorResponse{
+		Error: message,
+		Code:  "SERVICE_UNAVAILABLE",
+	})
+}

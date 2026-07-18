@@ -29,6 +29,7 @@ import (
 	"guestflow/internal/repository"
 	"guestflow/internal/service"
 	"guestflow/internal/validator"
+	"guestflow/internal/whatsapp"
 	appresponse "guestflow/pkg/response"
 
 	"github.com/jmoiron/sqlx"
@@ -215,7 +216,8 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 	rsvpService := service.NewRSVPService(rsvpRepo, invitationRepo, eventRepo, eventGuestRepo, auditService)
 	checkinService := service.NewCheckinService(checkinRepo, guestRepo, invitationRepo, eventGuestRepo, eventRepo, seatingRepo, auditService)
 	seatingService := service.NewSeatingService(seatingRepo, guestRepo, eventGuestRepo, auditService)
-	commService := service.NewCommunicationService(commRepo, guestRepo, eventGuestRepo, eventRepo)
+	whatsappClient := whatsapp.NewClient(cfg.WhatsApp)
+	commService := service.NewCommunicationService(commRepo, guestRepo, eventGuestRepo, eventRepo, invitationRepo, whatsappClient, cfg.App.PublicURL)
 	dashboardService := service.NewDashboardService(db, eventRepo, rsvpRepo, checkinRepo, commRepo, seatingRepo)
 
 	// =====================================================================

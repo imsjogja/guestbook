@@ -7,6 +7,7 @@ import (
 
 	"guestflow/internal/domain"
 	"guestflow/internal/service"
+	"guestflow/internal/whatsapp"
 	appresponse "guestflow/pkg/response"
 
 	"github.com/google/uuid"
@@ -220,6 +221,12 @@ func (h *CommunicationHandler) SendMessage(c echo.Context) error {
 			return appresponse.Conflict(c, "Template is inactive")
 		case stderrors.Is(err, domain.ErrNotFound):
 			return appresponse.NotFound(c, "Guest or event")
+		case stderrors.Is(err, whatsapp.ErrPhoneMissing):
+			return appresponse.ValidationError(c, "Nomor WhatsApp tamu belum diisi")
+		case stderrors.Is(err, whatsapp.ErrInvalidPhone):
+			return appresponse.ValidationError(c, "Nomor WhatsApp tamu tidak valid")
+		case stderrors.Is(err, whatsapp.ErrNotConfigured):
+			return appresponse.ServiceUnavailable(c, "WhatsApp belum dikonfigurasi")
 		default:
 			return appresponse.InternalError(c, "Failed to send messages")
 		}
@@ -402,6 +409,8 @@ func (h *CommunicationHandler) LaunchCampaign(c echo.Context) error {
 			return appresponse.Conflict(c, "Template is inactive")
 		case stderrors.Is(err, domain.ErrEmptyRecipientList):
 			return appresponse.ValidationError(c, "No recipients match the filter criteria")
+		case stderrors.Is(err, whatsapp.ErrNotConfigured):
+			return appresponse.ServiceUnavailable(c, "WhatsApp belum dikonfigurasi")
 		default:
 			return appresponse.InternalError(c, "Failed to launch campaign")
 		}

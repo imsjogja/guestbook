@@ -286,6 +286,8 @@ OpenAPI 3.0 specification available at `docs/api/openapi.yaml`.
 | `POST` | `/api/v1/tenants/:id/guests/import` | Import CSV |
 | `POST` | `/api/v1/tenants/:id/events/:eventId/invitations` | Create invitations |
 | `GET`  | `/api/v1/tenants/:id/events/:eventId/invitations/:invitationId/qr` | Get QR code |
+| `POST` | `/api/v1/tenants/:id/events/:eventId/messages/send` | Send a WhatsApp template to one or more guests |
+| `POST` | `/api/v1/tenants/:id/events/:eventId/campaigns/:campaignId/launch` | Send a campaign to filtered guests |
 | `POST` | `/api/v1/rsvp` | Submit RSVP (public) |
 | `GET`  | `/api/v1/tenants/:id/events/:eventId/rsvp/dashboard` | RSVP dashboard |
 | `POST` | `/api/v1/tenants/:id/events/:eventId/checkin` | Process check-in |
@@ -301,6 +303,19 @@ OpenAPI 3.0 specification available at `docs/api/openapi.yaml`.
 All protected endpoints require:
 - `Authorization: Bearer <access_token>` header
 - `X-Tenant-ID: <tenant_uuid>` header
+
+### WhatsApp Delivery Flow
+
+WhatsApp delivery is available from the guest detail action, invitation row action, selected invitations, and communication campaigns. All paths use the same `messages/send` service so every delivery is logged per guest and the invitation status is updated when a message is accepted by Blastr.
+
+```json
+{
+  "guest_ids": ["GUEST_UUID"],
+  "template_id": "WHATSAPP_TEMPLATE_UUID"
+}
+```
+
+Before a batch is sent, the API verifies that every guest belongs to the selected event and has a valid WhatsApp number. An empty or invalid number returns `422` and no message in that batch is sent. Provider credentials that are missing or disabled return `503`.
 
 ---
 
@@ -397,6 +412,10 @@ All configuration is via environment variables. Copy `.env.example` to `.env` an
 | `REDIS_PORT` | Redis port | `6379` |
 | `JWT_ACCESS_SECRET` | JWT access token secret | *(required)* |
 | `JWT_REFRESH_SECRET` | JWT refresh token secret | *(required)* |
+| `WHATSAPP_ENABLED` | Enable Blastr WhatsApp delivery | `false` |
+| `WHATSAPP_API_URL` | Blastr send endpoint | `https://app.blastr.id/api/pub/send` |
+| `WHATSAPP_ACCOUNT_TOKEN` | Blastr account bearer token | *(required when enabled)* |
+| `WHATSAPP_SENDER_TOKEN` | Blastr sender token | *(required when enabled)* |
 
 See `.env.example` for full configuration options.
 
@@ -589,7 +608,7 @@ Target: **Level 2** (Application handling sensitive data)
 - Docker development environment
 
 ### Phase 2 (Planned)
-- [ ] Official WhatsApp Business API integration
+- [x] Blastr WhatsApp delivery integration with per-guest and batch actions
 - [ ] Automated reminder scheduling
 - [ ] Offline-first PWA check-in scanner
 - [ ] Thermal label printing

@@ -10,6 +10,7 @@ import (
 
 	"guestflow/internal/domain"
 	"guestflow/internal/repository"
+	"guestflow/internal/whatsapp"
 
 	"github.com/google/uuid"
 )
@@ -20,6 +21,9 @@ type CommunicationService struct {
 	guestRepo      *repository.GuestRepository
 	eventGuestRepo *repository.EventGuestRepository
 	eventRepo      *repository.EventRepository
+	invitationRepo *repository.InvitationRepository
+	whatsapp       *whatsapp.Client
+	baseURL        string
 }
 
 // NewCommunicationService creates a new CommunicationService.
@@ -28,12 +32,18 @@ func NewCommunicationService(
 	guestRepo *repository.GuestRepository,
 	eventGuestRepo *repository.EventGuestRepository,
 	eventRepo *repository.EventRepository,
+	invitationRepo *repository.InvitationRepository,
+	whatsappClient *whatsapp.Client,
+	baseURL string,
 ) *CommunicationService {
 	return &CommunicationService{
 		commRepo:       commRepo,
 		guestRepo:      guestRepo,
 		eventGuestRepo: eventGuestRepo,
 		eventRepo:      eventRepo,
+		invitationRepo: invitationRepo,
+		whatsapp:       whatsappClient,
+		baseURL:        baseURL,
 	}
 }
 
@@ -290,21 +300,59 @@ func (s *CommunicationService) SendMessage(ctx context.Context, tenantID, eventI
 
 	now := time.Now().UTC()
 	var messages []*domain.CommunicationMessage
+	guests := make([]*domain.Guest, 0, len(req.GuestIDs))
+	eventGuests := make([]*domain.EventGuest, 0, len(req.GuestIDs))
 
-	for _, guestID := range req.GuestIDs {
-		eventGuest, err := s.eventGuestRepo.GetByEventAndGuest(ctx, tenantID, eventID, guestID)
-		if err != nil {
-			return nil, fmt.Errorf("get event guest %s: guest is not in event roster: %w", guestID, domain.ErrInvalidInput)
+	// Validate the entire WhatsApp batch before creating any records or calling the provider.
+	if template.Channel == domain.ChannelWhatsApp {
+		if s.whatsapp == nil || !s.whatsapp.Configured() {
+			return nil, whatsapp.ErrNotConfigured
 		}
+		for _, guestID := range req.GuestIDs {
+			eventGuest, err := s.eventGuestRepo.GetByEventAndGuest(ctx, tenantID, eventID, guestID)
+			if err != nil {
+				return nil, fmt.Errorf("get event guest %s: guest is not in event roster: %w", guestID, domain.ErrInvalidInput)
+			}
+			guest, err := s.guestRepo.GetByIDForTenant(ctx, tenantID, guestID)
+			if err != nil {
+				return nil, fmt.Errorf("get guest %s: %w", guestID, err)
+			}
+			phone := ""
+			if guest.Phone != nil {
+				phone = *guest.Phone
+			}
+			if _, err := whatsapp.NormalizePhone(phone); err != nil {
+				return nil, fmt.Errorf("guest %s (%s): %w", guest.FullName, guestID, err)
+			}
+			eventGuests = append(eventGuests, eventGuest)
+			guests = append(guests, guest)
+		}
+	}
 
-		// Get guest
-		guest, err := s.guestRepo.GetByIDForTenant(ctx, tenantID, guestID)
-		if err != nil {
-			return nil, fmt.Errorf("get guest %s: %w", guestID, err)
+	for index, guestID := range req.GuestIDs {
+		var eventGuest *domain.EventGuest
+		var guest *domain.Guest
+		var err error
+		if template.Channel == domain.ChannelWhatsApp {
+			eventGuest = eventGuests[index]
+			guest = guests[index]
+		} else {
+			eventGuest, err = s.eventGuestRepo.GetByEventAndGuest(ctx, tenantID, eventID, guestID)
+			if err != nil {
+				return nil, fmt.Errorf("get event guest %s: guest is not in event roster: %w", guestID, domain.ErrInvalidInput)
+			}
+			guest, err = s.guestRepo.GetByIDForTenant(ctx, tenantID, guestID)
+			if err != nil {
+				return nil, fmt.Errorf("get guest %s: %w", guestID, err)
+			}
 		}
 
 		// Build render variables
-		vars := BuildRenderVariables(guest, event, nil, "")
+		var invitation *domain.Invitation
+		if s.invitationRepo != nil {
+			invitation, _ = s.invitationRepo.GetByEventAndGuest(ctx, eventID, guestID)
+		}
+		vars := BuildRenderVariables(guest, event, invitation, s.baseURL)
 		// Override with user-provided variables
 		for k, v := range req.Variables {
 			if sv, ok := v.(string); ok {
@@ -331,6 +379,9 @@ func (s *CommunicationService) SendMessage(ctx context.Context, tenantID, eventI
 			Body:         renderedBody,
 			Status:       domain.MessageStatusQueued,
 		}
+		if invitation != nil {
+			msg.InvitationID = &invitation.ID
+		}
 
 		if template.Subject != nil {
 			subject := RenderTemplate(*template.Subject, vars)
@@ -339,6 +390,39 @@ func (s *CommunicationService) SendMessage(ctx context.Context, tenantID, eventI
 
 		if err := s.commRepo.CreateMessage(ctx, msg); err != nil {
 			return nil, fmt.Errorf("create message for guest %s: %w", guestID, err)
+		}
+
+		if template.Channel == domain.ChannelWhatsApp {
+			phone := ""
+			if guest.Phone != nil {
+				phone = *guest.Phone
+			}
+			externalID, sendErr := s.whatsapp.Send(ctx, phone, renderedBody)
+			if sendErr != nil {
+				failedAt := time.Now().UTC()
+				errorMessage := sendErr.Error()
+				_ = s.commRepo.UpdateMessageStatus(ctx, tenantID, msg.ID, domain.MessageStatusFailed, nil, nil, nil, &failedAt, &errorMessage, nil, nil)
+				msg.Status = domain.MessageStatusFailed
+				msg.FailedAt = &failedAt
+				msg.ErrorMessage = &errorMessage
+			} else {
+				sentAt := time.Now().UTC()
+				var providerID *string
+				if externalID != "" {
+					providerID = &externalID
+				}
+				if err := s.commRepo.UpdateMessageStatus(ctx, tenantID, msg.ID, domain.MessageStatusSent, &sentAt, nil, nil, nil, nil, providerID, nil); err != nil {
+					return nil, fmt.Errorf("update sent message %s: %w", msg.ID, err)
+				}
+				msg.Status = domain.MessageStatusSent
+				msg.SentAt = &sentAt
+				msg.ExternalID = providerID
+				if invitation != nil && s.invitationRepo != nil {
+					if err := s.invitationRepo.MarkSent(ctx, invitation.ID, tenantID); err != nil {
+						return nil, fmt.Errorf("mark invitation %s as sent: %w", invitation.ID, err)
+					}
+				}
+			}
 		}
 
 		messages = append(messages, msg)
@@ -506,6 +590,9 @@ func (s *CommunicationService) SendCampaign(ctx context.Context, tenantID, event
 	if !template.IsActive {
 		return domain.ErrTemplateInactive
 	}
+	if campaign.Channel == domain.ChannelWhatsApp && (s.whatsapp == nil || !s.whatsapp.Configured()) {
+		return whatsapp.ErrNotConfigured
+	}
 
 	// Get event
 	if campaign.EventID != eventID {
@@ -571,8 +658,23 @@ func (s *CommunicationService) SendCampaign(ctx context.Context, tenantID, event
 			continue
 		}
 
+		var invitation *domain.Invitation
+		if s.invitationRepo != nil {
+			invitation, _ = s.invitationRepo.GetByEventAndGuest(ctx, eventID, guestID)
+		}
+		if campaign.Channel == domain.ChannelWhatsApp {
+			phone := ""
+			if guest.Phone != nil {
+				phone = *guest.Phone
+			}
+			if _, normalizeErr := whatsapp.NormalizePhone(phone); normalizeErr != nil {
+				failedCount++
+				continue
+			}
+		}
+
 		// Build render variables
-		vars := BuildRenderVariables(guest, event, nil, "")
+		vars := BuildRenderVariables(guest, event, invitation, s.baseURL)
 		renderedBody := RenderTemplate(template.Body, vars)
 
 		msg := &domain.CommunicationMessage{
@@ -591,6 +693,9 @@ func (s *CommunicationService) SendCampaign(ctx context.Context, tenantID, event
 			Body:         renderedBody,
 			Status:       domain.MessageStatusQueued,
 		}
+		if invitation != nil {
+			msg.InvitationID = &invitation.ID
+		}
 
 		if template.Subject != nil {
 			subject := RenderTemplate(*template.Subject, vars)
@@ -602,6 +707,32 @@ func (s *CommunicationService) SendCampaign(ctx context.Context, tenantID, event
 			continue
 		}
 
+		if campaign.Channel == domain.ChannelWhatsApp {
+			phone := ""
+			if guest.Phone != nil {
+				phone = *guest.Phone
+			}
+			externalID, sendErr := s.whatsapp.Send(ctx, phone, renderedBody)
+			if sendErr != nil {
+				failedAt := time.Now().UTC()
+				errorMessage := sendErr.Error()
+				_ = s.commRepo.UpdateMessageStatus(ctx, tenantID, msg.ID, domain.MessageStatusFailed, nil, nil, nil, &failedAt, &errorMessage, nil, nil)
+				failedCount++
+				continue
+			}
+			sentAt := time.Now().UTC()
+			var providerID *string
+			if externalID != "" {
+				providerID = &externalID
+			}
+			if err := s.commRepo.UpdateMessageStatus(ctx, tenantID, msg.ID, domain.MessageStatusSent, &sentAt, nil, nil, nil, nil, providerID, nil); err != nil {
+				failedCount++
+				continue
+			}
+			if invitation != nil && s.invitationRepo != nil {
+				_ = s.invitationRepo.MarkSent(ctx, invitation.ID, tenantID)
+			}
+		}
 		sentCount++
 	}
 
