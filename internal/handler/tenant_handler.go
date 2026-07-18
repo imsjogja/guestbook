@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"net/http"
+	"time"
 
 	"guestflow/internal/domain"
 	mid "guestflow/internal/middleware"
@@ -29,6 +30,29 @@ type TenantResponse struct {
 	Data    interface{} `json:"data,omitempty"`
 	Error   string      `json:"error,omitempty"`
 	Message string      `json:"message,omitempty"`
+}
+
+type tenantMemberUserResponse struct {
+	ID        string `json:"id"`
+	Email     string `json:"email"`
+	FullName  string `json:"fullName"`
+	Role      string `json:"role"`
+	Avatar    string `json:"avatar,omitempty"`
+	CreatedAt string `json:"createdAt"`
+	UpdatedAt string `json:"updatedAt"`
+}
+
+type tenantMemberResponse struct {
+	ID          string                   `json:"id"`
+	TenantID    string                   `json:"tenantId"`
+	UserID      string                   `json:"userId"`
+	User        tenantMemberUserResponse `json:"user"`
+	Role        string                   `json:"role"`
+	InvitedBy   string                   `json:"invitedBy,omitempty"`
+	InvitedAt   string                   `json:"invitedAt,omitempty"`
+	AcceptedAt  string                   `json:"acceptedAt,omitempty"`
+	Status      string                   `json:"status"`
+	Permissions []string                 `json:"permissions"`
 }
 
 // Create handles POST /api/v1/tenants - creates a new tenant.
@@ -125,6 +149,69 @@ func (h *TenantHandler) List(c echo.Context) error {
 	return c.JSON(http.StatusOK, TenantResponse{Data: tenants})
 }
 
+// ListUsers handles GET /api/v1/tenants/:id/users - lists tenant members.
+func (h *TenantHandler) ListUsers(c echo.Context) error {
+	tenantID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, TenantResponse{Error: "invalid tenant id"})
+	}
+
+	members, err := h.tenantService.ListMembers(c.Request().Context(), tenantID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, TenantResponse{Error: "failed to list users"})
+	}
+
+	response := make([]tenantMemberResponse, 0, len(members))
+	for _, member := range members {
+		if member.Membership == nil || member.User == nil {
+			continue
+		}
+
+		avatar := ""
+		if member.User.AvatarURL != nil {
+			avatar = *member.User.AvatarURL
+		}
+
+		createdAt := member.User.CreatedAt.UTC().Format(time.RFC3339)
+		updatedAt := member.User.UpdatedAt.UTC().Format(time.RFC3339)
+		invitedBy := ""
+		if member.Membership.InvitedBy != nil {
+			invitedBy = member.Membership.InvitedBy.String()
+		}
+		invitedAt := ""
+		if member.Membership.InvitedAt != nil {
+			invitedAt = member.Membership.InvitedAt.UTC().Format(time.RFC3339)
+		}
+		acceptedAt := ""
+		if member.Membership.JoinedAt != nil {
+			acceptedAt = member.Membership.JoinedAt.UTC().Format(time.RFC3339)
+		}
+
+		response = append(response, tenantMemberResponse{
+			ID:       member.Membership.UserID.String(),
+			TenantID: member.Membership.TenantID.String(),
+			UserID:   member.Membership.UserID.String(),
+			User: tenantMemberUserResponse{
+				ID:        member.User.ID.String(),
+				Email:     member.User.Email,
+				FullName:  member.User.FullName,
+				Role:      mapTenantRoleToUI(member.Membership.Role),
+				Avatar:    avatar,
+				CreatedAt: createdAt,
+				UpdatedAt: updatedAt,
+			},
+			Role:        mapTenantRoleToUI(member.Membership.Role),
+			InvitedBy:   invitedBy,
+			InvitedAt:   invitedAt,
+			AcceptedAt:  acceptedAt,
+			Status:      mapMembershipStatusToUI(member.Membership.Status),
+			Permissions: []string{},
+		})
+	}
+
+	return c.JSON(http.StatusOK, TenantResponse{Data: response})
+}
+
 // InviteUser handles POST /api/v1/tenants/:id/users/invite - invites a user.
 func (h *TenantHandler) InviteUser(c echo.Context) error {
 	tenantID, err := uuid.Parse(c.Param("id"))
@@ -154,6 +241,8 @@ func (h *TenantHandler) InviteUser(c echo.Context) error {
 			return c.JSON(http.StatusForbidden, TenantResponse{Error: "forbidden"})
 		case errors.Is(err, domain.ErrAlreadyExists):
 			return c.JSON(http.StatusConflict, TenantResponse{Error: "user is already a member"})
+		case errors.Is(err, domain.ErrUserNotFound):
+			return c.JSON(http.StatusNotFound, TenantResponse{Error: "user not found"})
 		case errors.Is(err, domain.ErrTenantNotFound):
 			return c.JSON(http.StatusNotFound, TenantResponse{Error: "tenant not found"})
 		default:
@@ -246,4 +335,30 @@ func getUserIDFromEchoContext(c echo.Context) (uuid.UUID, error) {
 		return uuid.UUID{}, errors.New("user_id not found in context")
 	}
 	return userID, nil
+}
+
+func mapTenantRoleToUI(role string) string {
+	switch role {
+	case domain.RoleTenantOwner:
+		return "owner"
+	case domain.RoleEventManager:
+		return "admin"
+	case domain.RoleRSVPOfficer, domain.RoleRegistrationOfficer:
+		return "editor"
+	case domain.RoleUsher, domain.RoleGiftOfficer, domain.RoleViewer:
+		return "viewer"
+	default:
+		return "viewer"
+	}
+}
+
+func mapMembershipStatusToUI(status string) string {
+	switch status {
+	case domain.MembershipStatusPending:
+		return "pending"
+	case domain.MembershipStatusInactive:
+		return "inactive"
+	default:
+		return "active"
+	}
 }

@@ -1,3 +1,5 @@
+-- +goose Up
+-- +goose StatementBegin
 -- Migration 005: Create audit_logs table
 -- Captures all significant actions across the platform for compliance
 -- and accountability. Supports filtering by tenant, user, action type,
@@ -37,3 +39,4 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_user
 -- Index for time-range queries
 CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at
     ON audit_logs(created_at DESC);
+-- +goose StatementEnd

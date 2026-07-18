@@ -16,24 +16,24 @@ import (
 
 // SeatingService encapsulates business logic for seating management.
 type SeatingService struct {
-	seatingRepo *repository.SeatingRepository
-	guestRepo   *repository.GuestRepository
-	checkinRepo *repository.CheckinRepository
-	auditSvc    *audit.Service
+	seatingRepo    *repository.SeatingRepository
+	guestRepo      *repository.GuestRepository
+	eventGuestRepo *repository.EventGuestRepository
+	auditSvc       *audit.Service
 }
 
 // NewSeatingService creates a new SeatingService.
 func NewSeatingService(
 	seatingRepo *repository.SeatingRepository,
 	guestRepo *repository.GuestRepository,
-	checkinRepo *repository.CheckinRepository,
+	eventGuestRepo *repository.EventGuestRepository,
 	auditSvc *audit.Service,
 ) *SeatingService {
 	return &SeatingService{
-		seatingRepo: seatingRepo,
-		guestRepo:   guestRepo,
-		checkinRepo: checkinRepo,
-		auditSvc:    auditSvc,
+		seatingRepo:    seatingRepo,
+		guestRepo:      guestRepo,
+		eventGuestRepo: eventGuestRepo,
+		auditSvc:       auditSvc,
 	}
 }
 
@@ -303,6 +303,12 @@ func (s *SeatingService) AssignGuest(ctx context.Context, tenantID, eventID, tab
 		return fmt.Errorf("assign guest: %w", err)
 	}
 
+	// Seating is scoped to the event roster, not the tenant-wide guest master.
+	eventGuest, err := s.eventGuestRepo.GetByEventAndGuest(ctx, tenantID, eventID, req.GuestID)
+	if err != nil {
+		return fmt.Errorf("assign guest: guest is not in event roster: %w", domain.ErrInvalidInput)
+	}
+
 	// Check VIP constraint
 	if table.VIPOnly {
 		if guest.GuestType != domain.GuestTypeVIP && guest.GuestType != domain.GuestTypeVVIP {
@@ -325,7 +331,7 @@ func (s *SeatingService) AssignGuest(ctx context.Context, tenantID, eventID, tab
 	}
 
 	// Check if guest is already assigned to this table
-	existingAssignment, err := s.seatingRepo.GetGuestAssignment(ctx, req.GuestID)
+	existingAssignment, err := s.seatingRepo.GetGuestAssignment(ctx, tenantID, eventID, req.GuestID)
 	if err != nil {
 		return fmt.Errorf("assign guest: %w", err)
 	}
@@ -338,11 +344,12 @@ func (s *SeatingService) AssignGuest(ctx context.Context, tenantID, eventID, tab
 	}
 
 	assignment := &domain.SeatAssignment{
-		TableID:    tableID,
-		GuestID:    req.GuestID,
-		SeatNumber: req.SeatNumber,
-		AssignedBy: assignedBy,
-		AssignedAt: time.Now().UTC(),
+		TableID:      tableID,
+		GuestID:      req.GuestID,
+		EventGuestID: &eventGuest.ID,
+		SeatNumber:   req.SeatNumber,
+		AssignedBy:   assignedBy,
+		AssignedAt:   time.Now().UTC(),
 	}
 
 	if err := s.seatingRepo.AssignGuest(ctx, assignment); err != nil {
@@ -375,14 +382,15 @@ func (s *SeatingService) AutoAssign(ctx context.Context, tenantID, eventID uuid.
 		return nil, fmt.Errorf("auto assign: %w", err)
 	}
 
-	// Get all checked-in guests for the event
-	params := domain.CheckinListParams{
+	// Seating planning starts from the active event roster. Check-in is an
+	// operational status and must not hide guests who need pre-event seating.
+	roster, err := s.eventGuestRepo.List(ctx, domain.EventGuestListParams{
 		TenantID: tenantID,
 		EventID:  eventID,
+		Status:   domain.EventGuestStatusActive,
 		Page:     1,
-		PerPage:  1000,
-	}
-	checkins, err := s.checkinRepo.ListByEvent(ctx, params)
+		PerPage:  100,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("auto assign: %w", err)
 	}
@@ -411,8 +419,8 @@ func (s *SeatingService) AutoAssign(ctx context.Context, tenantID, eventID uuid.
 	assigned := 0
 	skipped := 0
 
-	for _, checkin := range checkins {
-		if assignedGuestIDs[checkin.GuestID] {
+	for _, eventGuest := range roster {
+		if assignedGuestIDs[eventGuest.GuestID] {
 			skipped++
 			continue
 		}
@@ -427,7 +435,7 @@ func (s *SeatingService) AutoAssign(ctx context.Context, tenantID, eventID uuid.
 			if currentOccupancy < tableCapacities[t.ID] {
 				// Check VIP constraint
 				if t.VIPOnly {
-					guest, err := s.guestRepo.GetByIDForTenant(ctx, tenantID, checkin.GuestID)
+					guest, err := s.guestRepo.GetByIDForTenant(ctx, tenantID, eventGuest.GuestID)
 					if err != nil {
 						continue
 					}
@@ -446,10 +454,11 @@ func (s *SeatingService) AutoAssign(ctx context.Context, tenantID, eventID uuid.
 		}
 
 		seatAssignment := &domain.SeatAssignment{
-			TableID:    assignedTable,
-			GuestID:    checkin.GuestID,
-			AssignedBy: assignedBy,
-			AssignedAt: time.Now().UTC(),
+			TableID:      assignedTable,
+			GuestID:      eventGuest.GuestID,
+			EventGuestID: &eventGuest.ID,
+			AssignedBy:   assignedBy,
+			AssignedAt:   time.Now().UTC(),
 		}
 
 		if err := s.seatingRepo.AssignGuest(ctx, seatAssignment); err != nil {
@@ -496,8 +505,12 @@ func (s *SeatingService) GetLayout(ctx context.Context, tenantID, eventID uuid.U
 		return nil, fmt.Errorf("get seating layout: %w", err)
 	}
 
-	// Count total checked-in guests
-	totalGuests, err := s.checkinRepo.CountByEvent(ctx, tenantID, eventID)
+	// Count active roster members, including guests who are not checked in yet.
+	totalGuests, err := s.eventGuestRepo.Count(ctx, domain.EventGuestListParams{
+		TenantID: tenantID,
+		EventID:  eventID,
+		Status:   domain.EventGuestStatusActive,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("get seating layout: %w", err)
 	}

@@ -1,10 +1,6 @@
 package domain
 
-import (
-	"time"
-
-	"github.com/google/uuid"
-)
+import "github.com/google/uuid"
 
 // Guest types
 const (
@@ -143,10 +139,11 @@ type GuestImportRow struct {
 
 // GuestImportResult holds the outcome of a bulk import operation.
 type GuestImportResult struct {
-	TotalRows    int              `json:"total_rows"`
-	SuccessCount int              `json:"success_count"`
-	ErrorCount   int              `json:"error_count"`
-	Errors       []GuestImportRow `json:"errors,omitempty"`
+	TotalRows        int              `json:"total_rows"`
+	SuccessCount     int              `json:"success_count"`
+	ErrorCount       int              `json:"error_count"`
+	ImportedGuestIDs []uuid.UUID      `json:"imported_guest_ids,omitempty"`
+	Errors           []GuestImportRow `json:"errors,omitempty"`
 }
 
 // GuestTag represents a tag/label for guests.
@@ -175,7 +172,6 @@ type GuestNote struct {
 
 // NewGuest creates a new Guest from a create request.
 func NewGuest(tenantID, createdBy uuid.UUID, req GuestCreateRequest) *Guest {
-	now := time.Now().UTC()
 	lang := req.Language
 	if lang == "" {
 		lang = "id"
@@ -199,8 +195,6 @@ func NewGuest(tenantID, createdBy uuid.UUID, req GuestCreateRequest) *Guest {
 		IsActive:             true,
 		CreatedBy:            createdBy,
 		Source:               &source,
-		CreatedAt:            now,
-		UpdatedAt:            now,
 	}
 
 	if req.Nickname != "" {

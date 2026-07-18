@@ -49,6 +49,7 @@ type RSVPResponse struct {
 	EventID            uuid.UUID   `db:"event_id" json:"event_id"`
 	InvitationID       uuid.UUID   `db:"invitation_id" json:"invitation_id"`
 	GuestID            uuid.UUID   `db:"guest_id" json:"guest_id"`
+	EventGuestID       *uuid.UUID  `db:"event_guest_id" json:"event_guest_id,omitempty"`
 	Status             string      `db:"status" json:"status"`
 	AttendingPax       int         `db:"attending_pax" json:"attending_pax"`
 	Adults             int         `db:"adults" json:"adults"`

@@ -20,6 +20,7 @@ type RSVPService struct {
 	rsvpRepo       *repository.RSVPRepository
 	invitationRepo *repository.InvitationRepository
 	eventRepo      *repository.EventRepository
+	eventGuestRepo *repository.EventGuestRepository
 	auditSvc       *audit.Service
 }
 
@@ -28,12 +29,14 @@ func NewRSVPService(
 	rsvpRepo *repository.RSVPRepository,
 	invitationRepo *repository.InvitationRepository,
 	eventRepo *repository.EventRepository,
+	eventGuestRepo *repository.EventGuestRepository,
 	auditSvc *audit.Service,
 ) *RSVPService {
 	return &RSVPService{
 		rsvpRepo:       rsvpRepo,
 		invitationRepo: invitationRepo,
 		eventRepo:      eventRepo,
+		eventGuestRepo: eventGuestRepo,
 		auditSvc:       auditSvc,
 	}
 }
@@ -127,6 +130,7 @@ func (s *RSVPService) Submit(ctx context.Context, req domain.RSVPSubmitRequest, 
 		EventID:           invitation.EventID,
 		InvitationID:      invitation.ID,
 		GuestID:           invitation.GuestID,
+		EventGuestID:      invitation.EventGuestID,
 		Status:            req.Status,
 		AttendingPax:      attendingPax,
 		Adults:            req.Adults,
@@ -134,8 +138,6 @@ func (s *RSVPService) Submit(ctx context.Context, req domain.RSVPSubmitRequest, 
 		AttendingSessions: req.AttendingSessions,
 		RespondedAt:       &now,
 		IPAddress:         &ipAddress,
-		CreatedAt:         now,
-		UpdatedAt:         now,
 	}
 
 	if req.MenuChoice != "" {
@@ -217,6 +219,9 @@ func (s *RSVPService) UpdateByOfficer(ctx context.Context, tenantID, eventID, rs
 	if err != nil {
 		return nil, fmt.Errorf("update rsvp: %w", err)
 	}
+	if rsvp.EventID != eventID {
+		return nil, fmt.Errorf("update rsvp: %w", domain.ErrRSVPNotFound)
+	}
 
 	// If changing to attending, validate capacity.
 	if req.Status == domain.RSVPStatusAttending && rsvp.Status != domain.RSVPStatusAttending {
@@ -260,6 +265,141 @@ func (s *RSVPService) UpdateByOfficer(ctx context.Context, tenantID, eventID, rs
 	_ = s.auditSvc.LogWithUser(ctx, officerID, tenantID, domain.AuditActionUpdate, domain.EntityTypeRSVP, rsvpID, nil, map[string]interface{}{
 		"status":        req.Status,
 		"attending_pax": req.AttendingPax,
+	})
+
+	return rsvp, nil
+}
+
+// UpsertByOfficer creates or updates an RSVP for a guest within an event.
+func (s *RSVPService) UpsertByOfficer(ctx context.Context, tenantID, eventID, guestID, officerID uuid.UUID, req domain.RSVPUpdateRequest) (*domain.RSVPResponse, error) {
+	if !domain.IsValidRSVPStatus(req.Status) {
+		return nil, fmt.Errorf("upsert rsvp: invalid status: %w", domain.ErrInvalidRSVPStatus)
+	}
+
+	if _, err := s.eventRepo.GetByIDForTenant(ctx, eventID, tenantID); err != nil {
+		return nil, fmt.Errorf("upsert rsvp: %w", err)
+	}
+	eventGuest, err := s.eventGuestRepo.GetByEventAndGuest(ctx, tenantID, eventID, guestID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, fmt.Errorf("upsert rsvp: guest is not in event roster: %w", domain.ErrInvalidInput)
+		}
+		return nil, fmt.Errorf("upsert rsvp: check event roster: %w", err)
+	}
+
+	invitation, err := s.invitationRepo.GetByEventAndGuest(ctx, eventID, guestID)
+	if err != nil {
+		return nil, fmt.Errorf("upsert rsvp: %w", err)
+	}
+	if invitation.TenantID != tenantID {
+		return nil, fmt.Errorf("upsert rsvp: %w", domain.ErrInvitationNotFound)
+	}
+
+	if req.AttendingPax < 0 {
+		req.AttendingPax = 0
+	}
+	if req.Status == domain.RSVPStatusNotAttending {
+		req.AttendingPax = 0
+	}
+
+	existing, err := s.rsvpRepo.GetByInvitation(ctx, invitation.ID)
+	if err != nil && !errors.Is(err, domain.ErrRSVPNotFound) {
+		return nil, fmt.Errorf("upsert rsvp: %w", err)
+	}
+
+	if req.Status == domain.RSVPStatusAttending {
+		if err := s.ValidateCapacity(ctx, eventID, tenantID, req.AttendingPax, invitation.ID); err != nil {
+			return nil, fmt.Errorf("upsert rsvp: %w", err)
+		}
+	}
+
+	now := time.Now().UTC()
+	if existing != nil {
+		existing.Status = req.Status
+		existing.AttendingPax = req.AttendingPax
+		existing.Adults = req.Adults
+		existing.Children = req.Children
+		existing.AttendingSessions = req.AttendingSessions
+		existing.EditedAt = &now
+		existing.EditedBy = &officerID
+		existing.UpdatedAt = now
+		if existing.RespondedAt == nil {
+			existing.RespondedAt = &now
+		}
+
+		if req.MenuChoice != "" {
+			existing.MenuChoice = &req.MenuChoice
+		}
+		if req.Allergies != "" {
+			existing.Allergies = &req.Allergies
+		}
+		if req.AccessibilityNeeds != "" {
+			existing.AccessibilityNeeds = &req.AccessibilityNeeds
+		}
+		if req.Transportation != "" {
+			existing.Transportation = &req.Transportation
+		}
+		if req.Notes != "" {
+			existing.Notes = &req.Notes
+		}
+
+		if err := s.rsvpRepo.Update(ctx, existing); err != nil {
+			return nil, fmt.Errorf("upsert rsvp: update: %w", err)
+		}
+
+		_ = s.invitationRepo.UpdateStatus(ctx, invitation.ID, invitation.TenantID, domain.InvitationStatusResponded)
+		_ = s.auditSvc.LogWithUser(ctx, officerID, tenantID, domain.AuditActionUpdate, domain.EntityTypeRSVP, existing.ID, nil, map[string]interface{}{
+			"status":        req.Status,
+			"attending_pax": req.AttendingPax,
+			"guest_id":      guestID.String(),
+			"mode":          "upsert",
+		})
+		return existing, nil
+	}
+
+	rsvp := &domain.RSVPResponse{
+		Base:              domain.NewBase(),
+		TenantID:          tenantID,
+		EventID:           eventID,
+		InvitationID:      invitation.ID,
+		GuestID:           guestID,
+		EventGuestID:      &eventGuest.ID,
+		Status:            req.Status,
+		AttendingPax:      req.AttendingPax,
+		Adults:            req.Adults,
+		Children:          req.Children,
+		AttendingSessions: req.AttendingSessions,
+		RespondedAt:       &now,
+		EditedAt:          &now,
+		EditedBy:          &officerID,
+	}
+
+	if req.MenuChoice != "" {
+		rsvp.MenuChoice = &req.MenuChoice
+	}
+	if req.Allergies != "" {
+		rsvp.Allergies = &req.Allergies
+	}
+	if req.AccessibilityNeeds != "" {
+		rsvp.AccessibilityNeeds = &req.AccessibilityNeeds
+	}
+	if req.Transportation != "" {
+		rsvp.Transportation = &req.Transportation
+	}
+	if req.Notes != "" {
+		rsvp.Notes = &req.Notes
+	}
+
+	if err := s.rsvpRepo.Create(ctx, rsvp); err != nil {
+		return nil, fmt.Errorf("upsert rsvp: create: %w", err)
+	}
+
+	_ = s.invitationRepo.UpdateStatus(ctx, invitation.ID, invitation.TenantID, domain.InvitationStatusResponded)
+	_ = s.auditSvc.LogWithUser(ctx, officerID, tenantID, domain.AuditActionCreate, domain.EntityTypeRSVP, rsvp.ID, nil, map[string]interface{}{
+		"status":        req.Status,
+		"attending_pax": req.AttendingPax,
+		"guest_id":      guestID.String(),
+		"mode":          "upsert",
 	})
 
 	return rsvp, nil

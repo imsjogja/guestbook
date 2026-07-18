@@ -25,7 +25,7 @@ func NewTenantUserRepository(db *sqlx.DB) *TenantUserRepository {
 // Create inserts a new tenant membership record.
 func (r *TenantUserRepository) Create(ctx context.Context, membership *domain.TenantMembership) error {
 	query := `
-		INSERT INTO tenant_memberships (
+		INSERT INTO tenant_users (
 			id, tenant_id, user_id, role, invited_by, invited_at, joined_at, status,
 			created_at, updated_at
 		) VALUES (
@@ -44,8 +44,8 @@ func (r *TenantUserRepository) Create(ctx context.Context, membership *domain.Te
 func (r *TenantUserRepository) Get(ctx context.Context, tenantID, userID uuid.UUID) (*domain.TenantMembership, error) {
 	var membership domain.TenantMembership
 	query := `
-		SELECT * FROM tenant_memberships
-		WHERE tenant_id = $1 AND user_id = $2 AND deleted_at IS NULL
+		SELECT * FROM tenant_users
+		WHERE tenant_id = $1 AND user_id = $2 AND status <> 'inactive'
 	`
 	err := r.db.GetContext(ctx, &membership, query, tenantID, userID)
 	if err != nil {
@@ -60,9 +60,9 @@ func (r *TenantUserRepository) Get(ctx context.Context, tenantID, userID uuid.UU
 // UpdateRole changes the role of an existing membership.
 func (r *TenantUserRepository) UpdateRole(ctx context.Context, tenantID, userID uuid.UUID, role string) error {
 	query := `
-		UPDATE tenant_memberships
+		UPDATE tenant_users
 		SET role = $1, updated_at = NOW()
-		WHERE tenant_id = $2 AND user_id = $3 AND deleted_at IS NULL
+		WHERE tenant_id = $2 AND user_id = $3 AND status <> 'inactive'
 	`
 	result, err := r.db.ExecContext(ctx, query, role, tenantID, userID)
 	if err != nil {
@@ -84,8 +84,8 @@ func (r *TenantUserRepository) UpdateRole(ctx context.Context, tenantID, userID 
 func (r *TenantUserRepository) ListByTenant(ctx context.Context, tenantID uuid.UUID) ([]*domain.TenantMembership, error) {
 	var memberships []*domain.TenantMembership
 	query := `
-		SELECT * FROM tenant_memberships
-		WHERE tenant_id = $1 AND deleted_at IS NULL
+		SELECT * FROM tenant_users
+		WHERE tenant_id = $1
 		ORDER BY created_at DESC
 	`
 	err := r.db.SelectContext(ctx, &memberships, query, tenantID)
@@ -99,8 +99,8 @@ func (r *TenantUserRepository) ListByTenant(ctx context.Context, tenantID uuid.U
 func (r *TenantUserRepository) ListByUser(ctx context.Context, userID uuid.UUID) ([]*domain.TenantMembership, error) {
 	var memberships []*domain.TenantMembership
 	query := `
-		SELECT * FROM tenant_memberships
-		WHERE user_id = $1 AND deleted_at IS NULL
+		SELECT * FROM tenant_users
+		WHERE user_id = $1 AND status = 'active'
 		ORDER BY created_at DESC
 	`
 	err := r.db.SelectContext(ctx, &memberships, query, userID)
@@ -113,9 +113,9 @@ func (r *TenantUserRepository) ListByUser(ctx context.Context, userID uuid.UUID)
 // SoftDelete removes a membership (soft-delete).
 func (r *TenantUserRepository) SoftDelete(ctx context.Context, tenantID, userID uuid.UUID) error {
 	query := `
-		UPDATE tenant_memberships
-		SET deleted_at = NOW(), updated_at = NOW()
-		WHERE tenant_id = $1 AND user_id = $2 AND deleted_at IS NULL
+		UPDATE tenant_users
+		SET status = 'inactive', updated_at = NOW()
+		WHERE tenant_id = $1 AND user_id = $2 AND status <> 'inactive'
 	`
 	result, err := r.db.ExecContext(ctx, query, tenantID, userID)
 	if err != nil {
@@ -138,10 +138,9 @@ func (r *TenantUserRepository) HasAccess(ctx context.Context, tenantID, userID u
 	var hasAccess bool
 	query := `
 		SELECT EXISTS(
-			SELECT 1 FROM tenant_memberships
+			SELECT 1 FROM tenant_users
 			WHERE tenant_id = $1 AND user_id = $2
 			  AND status = 'active'
-			  AND deleted_at IS NULL
 		)
 	`
 	err := r.db.GetContext(ctx, &hasAccess, query, tenantID, userID)
@@ -155,8 +154,8 @@ func (r *TenantUserRepository) HasAccess(ctx context.Context, tenantID, userID u
 func (r *TenantUserRepository) GetRole(ctx context.Context, tenantID, userID uuid.UUID) (string, error) {
 	var role string
 	query := `
-		SELECT role FROM tenant_memberships
-		WHERE tenant_id = $1 AND user_id = $2 AND deleted_at IS NULL
+		SELECT role FROM tenant_users
+		WHERE tenant_id = $1 AND user_id = $2 AND status <> 'inactive'
 	`
 	err := r.db.GetContext(ctx, &role, query, tenantID, userID)
 	if err != nil {

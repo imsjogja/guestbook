@@ -30,6 +30,7 @@ type InvitationService struct {
 	eventRepo      *repository.EventRepository
 	rsvpRepo       *repository.RSVPRepository
 	guestRepo      *repository.GuestRepository
+	eventGuestRepo *repository.EventGuestRepository
 	auditSvc       *audit.Service
 	baseURL        string
 }
@@ -40,6 +41,7 @@ func NewInvitationService(
 	eventRepo *repository.EventRepository,
 	rsvpRepo *repository.RSVPRepository,
 	guestRepo *repository.GuestRepository,
+	eventGuestRepo *repository.EventGuestRepository,
 	auditSvc *audit.Service,
 ) *InvitationService {
 	return &InvitationService{
@@ -47,6 +49,7 @@ func NewInvitationService(
 		eventRepo:      eventRepo,
 		rsvpRepo:       rsvpRepo,
 		guestRepo:      guestRepo,
+		eventGuestRepo: eventGuestRepo,
 		auditSvc:       auditSvc,
 		baseURL:        invitationBaseURL,
 	}
@@ -79,6 +82,16 @@ func (s *InvitationService) Create(ctx context.Context, tenantID, eventID, creat
 		return nil, fmt.Errorf("create invitation: %w", err)
 	}
 
+	// Invitations are credentials for an event roster member, never for a
+	// tenant-wide contact that has not been added to this event.
+	eventGuest, err := s.eventGuestRepo.GetByEventAndGuest(ctx, tenantID, eventID, guestID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, fmt.Errorf("create invitation: guest is not in event roster: %w", domain.ErrInvalidInput)
+		}
+		return nil, fmt.Errorf("create invitation: check event roster: %w", err)
+	}
+
 	// Check if invitation already exists for this guest at this event.
 	exists, err := s.invitationRepo.ExistsForGuest(ctx, eventID, guestID)
 	if err != nil {
@@ -100,12 +113,12 @@ func (s *InvitationService) Create(ctx context.Context, tenantID, eventID, creat
 	// Build the public URL.
 	url := fmt.Sprintf("%s/%s", s.baseURL, token)
 
-	now := time.Now().UTC()
 	invitation := &domain.Invitation{
 		Base:            domain.NewBase(),
 		TenantID:        tenantID,
 		EventID:         eventID,
 		GuestID:         guestID,
+		EventGuestID:    &eventGuest.ID,
 		Token:           token, // Raw token - returned to caller ONCE, never stored in plain text
 		TokenHash:       tokenHash,
 		URL:             url,
@@ -117,8 +130,6 @@ func (s *InvitationService) Create(ctx context.Context, tenantID, eventID, creat
 		Status:          domain.InvitationStatusDraft,
 		ExpiresAt:       req.ExpiresAt,
 		CreatedBy:       createdBy,
-		CreatedAt:       now,
-		UpdatedAt:       now,
 	}
 
 	if err := s.invitationRepo.Create(ctx, invitation); err != nil {

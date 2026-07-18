@@ -16,6 +16,7 @@ func RegisterRoutes(
 	tenantHandler *TenantHandler,
 	eventHandler *EventHandler,
 	guestHandler *GuestHandler,
+	eventGuestHandler *EventGuestHandler,
 	householdHandler *HouseholdHandler,
 	invitationHandler *InvitationHandler,
 	rsvpHandler *RSVPHandler,
@@ -55,6 +56,7 @@ func RegisterRoutes(
 	tenants.GET("", tenantHandler.List)
 	tenants.GET("/:id", tenantHandler.Get)
 	tenants.PATCH("/:id", tenantHandler.Update)
+	tenants.GET("/:id/users", tenantHandler.ListUsers)
 	tenants.POST("/:id/users/invite", tenantHandler.InviteUser)
 	tenants.DELETE("/:id/users/:userId", tenantHandler.RemoveUser)
 	tenants.PATCH("/:id/users/:userId/role", tenantHandler.UpdateUserRole)
@@ -91,6 +93,14 @@ func RegisterRoutes(
 	events.DELETE("/:eventId", eventHandler.Delete)
 	events.POST("/:eventId/publish", eventHandler.Publish)
 
+	// Event guest roster routes. These are intentionally separate from the
+	// tenant guest master so every operational flow can use event scope.
+	eventGuests := events.Group("/:eventId/guests")
+	eventGuests.POST("", eventGuestHandler.Create)
+	eventGuests.GET("", eventGuestHandler.List)
+	eventGuests.POST("/import", eventGuestHandler.ImportCSV)
+	eventGuests.DELETE("/:eventGuestId", eventGuestHandler.Cancel)
+
 	// Invitation routes (protected, tenant-scoped, nested under events).
 	invitations := events.Group("/:eventId/invitations")
 	invitations.POST("", invitationHandler.Create)
@@ -105,6 +115,7 @@ func RegisterRoutes(
 	rsvps.GET("", rsvpHandler.List)
 	rsvps.GET("/dashboard", rsvpHandler.Dashboard)
 	rsvps.PATCH("/:rsvpId", rsvpHandler.UpdateByOfficer)
+	rsvps.POST("/by-guest/:guestId", rsvpHandler.UpsertByGuest)
 
 	// Check-in routes (protected, tenant-scoped, nested under events).
 	checkins := events.Group("/:eventId/checkin")

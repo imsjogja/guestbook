@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -133,7 +134,9 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 	e.Use(echomiddleware.GzipWithConfig(echomiddleware.GzipConfig{
 		Level: 5,
 		Skipper: func(c echo.Context) bool {
-			return c.Request().URL.Path == "/health"
+			// Keep API JSON responses uncompressed. This avoids clients receiving
+			// an empty response when a browser closes a gzip stream early.
+			return c.Request().URL.Path == "/health" || strings.HasPrefix(c.Request().URL.Path, "/api/")
 		},
 	}))
 	e.Use(echomiddleware.SecureWithConfig(echomiddleware.SecureConfig{
@@ -175,6 +178,7 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 
 	// Guest
 	guestRepo := repository.NewGuestRepository(db)
+	eventGuestRepo := repository.NewEventGuestRepository(db)
 	householdRepo := repository.NewHouseholdRepository(db)
 	guestTagRepo := repository.NewGuestTagRepository(db)
 
@@ -200,12 +204,13 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 	tenantService := service.NewTenantService(tenantRepo, tenantUserRepo, repository.NewUserRepository(db), auditService)
 	eventService := service.NewEventService(eventRepo, eventSessionRepo, eventLocationRepo, auditService)
 	guestService := service.NewGuestService(guestRepo, householdRepo, guestTagRepo, auditService)
+	eventGuestService := service.NewEventGuestService(eventGuestRepo, eventRepo, guestRepo, guestService, auditService)
 	householdService := service.NewHouseholdService(householdRepo, auditService)
-	invitationService := service.NewInvitationService(invitationRepo, eventRepo, rsvpRepo, guestRepo, auditService)
-	rsvpService := service.NewRSVPService(rsvpRepo, invitationRepo, eventRepo, auditService)
-	checkinService := service.NewCheckinService(checkinRepo, guestRepo, invitationRepo, eventRepo, seatingRepo, auditService)
-	seatingService := service.NewSeatingService(seatingRepo, guestRepo, checkinRepo, auditService)
-	commService := service.NewCommunicationService(commRepo, guestRepo, eventRepo)
+	invitationService := service.NewInvitationService(invitationRepo, eventRepo, rsvpRepo, guestRepo, eventGuestRepo, auditService)
+	rsvpService := service.NewRSVPService(rsvpRepo, invitationRepo, eventRepo, eventGuestRepo, auditService)
+	checkinService := service.NewCheckinService(checkinRepo, guestRepo, invitationRepo, eventGuestRepo, eventRepo, seatingRepo, auditService)
+	seatingService := service.NewSeatingService(seatingRepo, guestRepo, eventGuestRepo, auditService)
+	commService := service.NewCommunicationService(commRepo, guestRepo, eventGuestRepo, eventRepo)
 	dashboardService := service.NewDashboardService(db, eventRepo, rsvpRepo, checkinRepo, commRepo, seatingRepo)
 
 	// =====================================================================
@@ -215,6 +220,7 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 	tenantHandler := handler.NewTenantHandler(tenantService)
 	eventHandler := handler.NewEventHandler(eventService)
 	guestHandler := handler.NewGuestHandler(guestService)
+	eventGuestHandler := handler.NewEventGuestHandler(eventGuestService)
 	householdHandler := handler.NewHouseholdHandler(householdService)
 	invitationHandler := handler.NewInvitationHandler(invitationService)
 	rsvpHandler := handler.NewRSVPHandler(rsvpService, invitationService)
@@ -264,6 +270,7 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 		tenantHandler,
 		eventHandler,
 		guestHandler,
+		eventGuestHandler,
 		householdHandler,
 		invitationHandler,
 		rsvpHandler,

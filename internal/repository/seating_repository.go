@@ -264,11 +264,12 @@ func (r *SeatingRepository) GetTableWithOccupancy(ctx context.Context, tenantID,
 func (r *SeatingRepository) AssignGuest(ctx context.Context, assignment *domain.SeatAssignment) error {
 	query := `
 		INSERT INTO seat_assignments (
-			table_id, guest_id, seat_number, assigned_by, assigned_at
+			table_id, guest_id, event_guest_id, seat_number, assigned_by, assigned_at
 		) VALUES (
-			:table_id, :guest_id, :seat_number, :assigned_by, :assigned_at
+			:table_id, :guest_id, :event_guest_id, :seat_number, :assigned_by, :assigned_at
 		)
 		ON CONFLICT (table_id, guest_id) DO UPDATE SET
+			event_guest_id = EXCLUDED.event_guest_id,
 			seat_number = EXCLUDED.seat_number,
 			assigned_by = EXCLUDED.assigned_by,
 			assigned_at = EXCLUDED.assigned_at
@@ -357,14 +358,15 @@ func (r *SeatingRepository) CountAssignmentsByTable(ctx context.Context, tableID
 }
 
 // GetGuestAssignment retrieves a guest's current table assignment.
-func (r *SeatingRepository) GetGuestAssignment(ctx context.Context, guestID uuid.UUID) (*domain.SeatAssignment, error) {
+func (r *SeatingRepository) GetGuestAssignment(ctx context.Context, tenantID, eventID, guestID uuid.UUID) (*domain.SeatAssignment, error) {
 	var assignment domain.SeatAssignment
 	query := `
-		SELECT * FROM seat_assignments
-		WHERE guest_id = $1
+		SELECT sa.* FROM seat_assignments sa
+		JOIN tables t ON t.id = sa.table_id AND t.deleted_at IS NULL
+		WHERE sa.guest_id = $1 AND t.tenant_id = $2 AND t.event_id = $3
 		LIMIT 1
 	`
-	err := r.db.GetContext(ctx, &assignment, query, guestID)
+	err := r.db.GetContext(ctx, &assignment, query, guestID, tenantID, eventID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -388,18 +390,25 @@ func (r *SeatingRepository) IsGuestAssigned(ctx context.Context, guestID uuid.UU
 	return count > 0, nil
 }
 
-// CountUnassignedGuests returns the number of checked-in guests not assigned to any table.
+// CountUnassignedGuests returns active event roster members not assigned to a table.
 func (r *SeatingRepository) CountUnassignedGuests(ctx context.Context, tenantID, eventID uuid.UUID) (int, error) {
 	query := `
-		SELECT COUNT(*) 
-		FROM checkins c
-		LEFT JOIN seat_assignments sa ON sa.guest_id = c.guest_id
-		WHERE c.tenant_id = $1 AND c.event_id = $2 
-		  AND c.deleted_at IS NULL AND c.status = $3
-		  AND sa.guest_id IS NULL
+		SELECT COUNT(*)
+		FROM event_guests eg
+		WHERE eg.tenant_id = $1 AND eg.event_id = $2
+		  AND eg.status = 'active' AND eg.deleted_at IS NULL
+		  AND NOT EXISTS (
+			SELECT 1
+			FROM seat_assignments sa
+			JOIN tables t ON t.id = sa.table_id
+			WHERE sa.guest_id = eg.guest_id
+			  AND t.tenant_id = eg.tenant_id
+			  AND t.event_id = eg.event_id
+			  AND t.deleted_at IS NULL
+		  )
 	`
 	var count int
-	err := r.db.GetContext(ctx, &count, query, tenantID, eventID, domain.CheckinStatusSuccess)
+	err := r.db.GetContext(ctx, &count, query, tenantID, eventID)
 	if err != nil {
 		return 0, fmt.Errorf("count unassigned guests: %w", err)
 	}

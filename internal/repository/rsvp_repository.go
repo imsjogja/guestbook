@@ -28,14 +28,14 @@ func NewRSVPRepository(db *sqlx.DB) *RSVPRepository {
 func (r *RSVPRepository) Create(ctx context.Context, rsvp *domain.RSVPResponse) error {
 	query := `
 		INSERT INTO rsvp_responses (
-			id, tenant_id, event_id, invitation_id, guest_id,
+			id, tenant_id, event_id, invitation_id, guest_id, event_guest_id,
 			status, attending_pax, adults, children,
 			menu_choice, allergies, accessibility_needs,
 			transportation, notes,
 			responded_at, edited_at, edited_by, ip_address,
 			created_at, updated_at
 		) VALUES (
-			:id, :tenant_id, :event_id, :invitation_id, :guest_id,
+			:id, :tenant_id, :event_id, :invitation_id, :guest_id, :event_guest_id,
 			:status, :attending_pax, :adults, :children,
 			:menu_choice, :allergies, :accessibility_needs,
 			:transportation, :notes,
@@ -228,11 +228,13 @@ func (r *RSVPRepository) GetDashboardStats(ctx context.Context, tenantID, eventI
 		dashboard.CapacityTotal = *eventCapacity
 	}
 
-	// Count total invited (active invitations for event)
+	// Count the active event roster. Invitations are a delivery artifact and
+	// should not determine how many guests belong to the event.
 	var totalInvited int
 	query := `
-		SELECT COUNT(*) FROM invitations
+		SELECT COUNT(*) FROM event_guests
 		WHERE tenant_id = $1 AND event_id = $2 AND deleted_at IS NULL
+		  AND status = 'active'
 	`
 	err := r.db.GetContext(ctx, &totalInvited, query, tenantID, eventID)
 	if err != nil {
@@ -298,7 +300,25 @@ func (r *RSVPRepository) GetDashboardStats(ctx context.Context, tenantID, eventI
 	dashboard.NotAttending = counts.NotAttending
 	dashboard.Maybe = counts.Maybe
 	dashboard.Waitlist = counts.Waitlist
-	dashboard.NoResponse = counts.NoResponse
+	// No response means an active roster member without any RSVP response.
+	// This keeps the metric useful even before invitations are created.
+	var noResponse int
+	query = `
+		SELECT COUNT(*)
+		FROM event_guests eg
+		WHERE eg.tenant_id = $1 AND eg.event_id = $2
+		  AND eg.status = 'active' AND eg.deleted_at IS NULL
+		  AND NOT EXISTS (
+			SELECT 1 FROM rsvp_responses r
+			WHERE r.tenant_id = eg.tenant_id
+			  AND r.event_id = eg.event_id
+			  AND r.guest_id = eg.guest_id
+		  )
+	`
+	if err = r.db.GetContext(ctx, &noResponse, query, tenantID, eventID); err != nil {
+		return nil, fmt.Errorf("dashboard no response: %w", err)
+	}
+	dashboard.NoResponse = noResponse
 	dashboard.CapacityUsed = counts.AttendingPax
 
 	// Calculate response rate based on sent invitations

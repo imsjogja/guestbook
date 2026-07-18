@@ -44,6 +44,7 @@ type Invitation struct {
 	TenantID        uuid.UUID  `db:"tenant_id" json:"tenant_id"`
 	EventID         uuid.UUID  `db:"event_id" json:"event_id"`
 	GuestID         uuid.UUID  `db:"guest_id" json:"guest_id"`
+	EventGuestID    *uuid.UUID `db:"event_guest_id" json:"event_guest_id,omitempty"`
 	Token           string     `db:"token" json:"-"`      // Opaque token (private - returned only on creation)
 	TokenHash       string     `db:"token_hash" json:"-"` // SHA-256 hash for lookup
 	URL             string     `db:"url" json:"url"`      // Public URL

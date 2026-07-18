@@ -388,13 +388,13 @@ func (r *CommunicationRepository) CountCampaignsByEvent(ctx context.Context, par
 func (r *CommunicationRepository) CreateMessage(ctx context.Context, message *domain.CommunicationMessage) error {
 	query := `
 		INSERT INTO communication_messages (
-			id, tenant_id, campaign_id, event_id, guest_id, invitation_id,
+			id, tenant_id, campaign_id, event_id, guest_id, event_guest_id, invitation_id,
 			channel, type, subject, body, status,
 			sent_at, delivered_at, read_at, failed_at,
 			error_message, external_id, cost,
 			created_at, updated_at
 		) VALUES (
-			:id, :tenant_id, :campaign_id, :event_id, :guest_id, :invitation_id,
+			:id, :tenant_id, :campaign_id, :event_id, :guest_id, :event_guest_id, :invitation_id,
 			:channel, :type, :subject, :body, :status,
 			:sent_at, :delivered_at, :read_at, :failed_at,
 			:error_message, :external_id, :cost,

@@ -7,8 +7,6 @@
 #   docker compose exec app make migrate-up
 #   docker compose exec -T db psql -U guestflow -d guestflow < migrations/999_seed_data.up.sql
 
-version: "3.9"
-
 services:
   # ---------------------------------------------------------------------------
   # PostgreSQL 16 - Primary Database
@@ -56,13 +54,42 @@ services:
       - guestflow
 
   # ---------------------------------------------------------------------------
+  # Database migrations
+  # ---------------------------------------------------------------------------
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: final
+    container_name: guestflow-migrate
+    restart: "no"
+    environment:
+      APP_ENV: development
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: guestflow
+      DB_USER: guestflow
+      DB_PASSWORD: guestflow
+      DB_SSL_MODE: disable
+      JWT_SECRET: dev-secret-change-in-production
+      JWT_ACCESS_TOKEN_EXPIRY: 15m
+      JWT_REFRESH_TOKEN_EXPIRY: 168h
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint: ["/app/migrate"]
+    command: ["up"]
+    networks:
+      - guestflow
+
+  # ---------------------------------------------------------------------------
   # GuestFlow Application Server
   # ---------------------------------------------------------------------------
   app:
     build:
       context: .
       dockerfile: Dockerfile
-      target: development
+      target: final
     container_name: guestflow-app
     restart: unless-stopped
     environment:
@@ -76,16 +103,12 @@ services:
       DB_SSL_MODE: disable
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      JWT_ACCESS_SECRET: dev-access-secret-change-in-production
-      JWT_REFRESH_SECRET: dev-refresh-secret-change-in-production
-      JWT_ACCESS_TTL: 15m
-      JWT_REFRESH_TTL: 168h
-      RATE_LIMIT_RPS: 60
+      JWT_SECRET: dev-secret-change-in-production
+      JWT_ACCESS_TOKEN_EXPIRY: 15m
+      JWT_REFRESH_TOKEN_EXPIRY: 168h
+      RATE_LIMIT_REQUESTS_PER_SECOND: 60
       RATE_LIMIT_BURST: 10
       CORS_ALLOWED_ORIGINS: "*"
-    volumes:
-      - .:/app:cached
-      - go_cache:/go/pkg/mod
     ports:
       - "8080:8080"
     depends_on:
@@ -93,9 +116,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     networks:
       - guestflow
-    command: ["air", "-c", ".air.toml"]
 
   # ---------------------------------------------------------------------------
   # Background Queue Workers
@@ -104,7 +128,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      target: development
+      target: final
     container_name: guestflow-worker
     restart: unless-stopped
     environment:
@@ -117,17 +141,20 @@ services:
       DB_SSL_MODE: disable
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      JWT_ACCESS_SECRET: dev-access-secret-change-in-production
-      JWT_REFRESH_SECRET: dev-refresh-secret-change-in-production
-    volumes:
-      - .:/app:cached
-      - go_cache:/go/pkg/mod
+      JWT_SECRET: dev-secret-change-in-production
+      JWT_ACCESS_TOKEN_EXPIRY: 15m
+      JWT_REFRESH_TOKEN_EXPIRY: 168h
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     networks:
       - guestflow
-    command: ["go", "run", "cmd/worker/main.go"]
+    entrypoint: ["/app/worker"]
+    command: ["-queues=all", "-concurrency=3"]
 
   # ---------------------------------------------------------------------------
   # Nginx Reverse Proxy (Optional - for local HTTPS simulation)
@@ -139,7 +166,7 @@ services:
     ports:
       - "80:80"
     volumes:
-      - ./nginx.dev.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       - app
     networks:
@@ -149,6 +176,8 @@ services:
   # MinIO - S3-compatible Object Storage (Optional)
   # ---------------------------------------------------------------------------
   minio:
+    profiles:
+      - optional
     image: minio/minio:latest
     container_name: guestflow-minio
     restart: unless-stopped
@@ -168,8 +197,6 @@ volumes:
   postgres_data:
     driver: local
   redis_data:
-    driver: local
-  go_cache:
     driver: local
   minio_data:
     driver: local

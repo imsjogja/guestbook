@@ -28,12 +28,12 @@ func NewCheckinRepository(db *sqlx.DB) *CheckinRepository {
 func (r *CheckinRepository) Create(ctx context.Context, checkin *domain.Checkin) error {
 	query := `
 		INSERT INTO checkins (
-			id, tenant_id, event_id, session_id, guest_id, invitation_id, credential_id,
+			id, tenant_id, event_id, session_id, guest_id, event_guest_id, invitation_id, credential_id,
 			method, status, device_id, gate_id, officer_id, actual_pax, adults, children,
 			override_reason, approved_by, ip_address, latitude, longitude, notes, offline_synced,
 			created_at, updated_at, deleted_at
 		) VALUES (
-			:id, :tenant_id, :event_id, :session_id, :guest_id, :invitation_id, :credential_id,
+			:id, :tenant_id, :event_id, :session_id, :guest_id, :event_guest_id, :invitation_id, :credential_id,
 			:method, :status, :device_id, :gate_id, :officer_id, :actual_pax, :adults, :children,
 			:override_reason, :approved_by, :ip_address, :latitude, :longitude, :notes, :offline_synced,
 			:created_at, :updated_at, :deleted_at
@@ -93,8 +93,9 @@ func (r *CheckinRepository) ListByEvent(ctx context.Context, params domain.Check
 // CountByEvent returns the total count of check-ins for an event.
 func (r *CheckinRepository) CountByEvent(ctx context.Context, tenantID, eventID uuid.UUID) (int, error) {
 	query := `
-		SELECT COUNT(*) FROM checkins
-		WHERE tenant_id = $1 AND event_id = $2 AND deleted_at IS NULL AND status = $3
+		SELECT COUNT(DISTINCT c.guest_id) FROM checkins c
+		WHERE c.tenant_id = $1 AND c.event_id = $2 AND c.deleted_at IS NULL AND c.status = $3
+		  AND EXISTS (SELECT 1 FROM event_guests eg WHERE eg.event_id = c.event_id AND eg.guest_id = c.guest_id AND eg.deleted_at IS NULL AND eg.status = 'active')
 	`
 	var count int
 	err := r.db.GetContext(ctx, &count, query, tenantID, eventID, domain.CheckinStatusSuccess)
@@ -107,8 +108,9 @@ func (r *CheckinRepository) CountByEvent(ctx context.Context, tenantID, eventID 
 // CountPaxByEvent returns the total actual pax for an event.
 func (r *CheckinRepository) CountPaxByEvent(ctx context.Context, tenantID, eventID uuid.UUID) (int, error) {
 	query := `
-		SELECT COALESCE(SUM(actual_pax), 0) FROM checkins
-		WHERE tenant_id = $1 AND event_id = $2 AND deleted_at IS NULL AND status = $3
+		SELECT COALESCE(SUM(c.actual_pax), 0) FROM checkins c
+		WHERE c.tenant_id = $1 AND c.event_id = $2 AND c.deleted_at IS NULL AND c.status = $3
+		  AND EXISTS (SELECT 1 FROM event_guests eg WHERE eg.event_id = c.event_id AND eg.guest_id = c.guest_id AND eg.deleted_at IS NULL AND eg.status = 'active')
 	`
 	var total int
 	err := r.db.GetContext(ctx, &total, query, tenantID, eventID, domain.CheckinStatusSuccess)
@@ -121,9 +123,10 @@ func (r *CheckinRepository) CountPaxByEvent(ctx context.Context, tenantID, event
 // CountWalkInsByEvent returns the total walk-in count for an event.
 func (r *CheckinRepository) CountWalkInsByEvent(ctx context.Context, tenantID, eventID uuid.UUID) (int, error) {
 	query := `
-		SELECT COUNT(*) FROM checkins
-		WHERE tenant_id = $1 AND event_id = $2 AND deleted_at IS NULL
-		  AND status = $3 AND method = $4
+		SELECT COUNT(DISTINCT c.guest_id) FROM checkins c
+		WHERE c.tenant_id = $1 AND c.event_id = $2 AND c.deleted_at IS NULL
+		  AND c.status = $3 AND c.method = $4
+		  AND EXISTS (SELECT 1 FROM event_guests eg WHERE eg.event_id = c.event_id AND eg.guest_id = c.guest_id AND eg.deleted_at IS NULL AND eg.status = 'active')
 	`
 	var count int
 	err := r.db.GetContext(ctx, &count, query, tenantID, eventID, domain.CheckinStatusSuccess, domain.CheckinMethodWalkin)
@@ -147,6 +150,7 @@ func (r *CheckinRepository) CountByGate(ctx context.Context, tenantID, eventID u
 			AND c.event_id = g.event_id
 			AND c.deleted_at IS NULL
 			AND c.status = $1
+			AND EXISTS (SELECT 1 FROM event_guests eg WHERE eg.event_id = c.event_id AND eg.guest_id = c.guest_id AND eg.deleted_at IS NULL AND eg.status = 'active')
 		WHERE g.tenant_id = $2 AND g.event_id = $3 AND g.deleted_at IS NULL
 		GROUP BY g.id, g.name
 		ORDER BY count DESC
@@ -165,9 +169,10 @@ func (r *CheckinRepository) CountByMethod(ctx context.Context, tenantID, eventID
 	query := `
 		SELECT 
 			method,
-			COUNT(*) as count
-		FROM checkins
-		WHERE tenant_id = $1 AND event_id = $2 AND deleted_at IS NULL AND status = $3
+			COUNT(DISTINCT c.guest_id) as count
+		FROM checkins c
+		WHERE c.tenant_id = $1 AND c.event_id = $2 AND c.deleted_at IS NULL AND c.status = $3
+		  AND EXISTS (SELECT 1 FROM event_guests eg WHERE eg.event_id = c.event_id AND eg.guest_id = c.guest_id AND eg.deleted_at IS NULL AND eg.status = 'active')
 		GROUP BY method
 		ORDER BY count DESC
 	`
@@ -190,8 +195,9 @@ func (r *CheckinRepository) GetRecent(ctx context.Context, tenantID, eventID uui
 	}
 
 	query := `
-		SELECT * FROM checkins
-		WHERE tenant_id = $1 AND event_id = $2 AND deleted_at IS NULL
+		SELECT c.* FROM checkins c
+		WHERE c.tenant_id = $1 AND c.event_id = $2 AND c.deleted_at IS NULL
+		  AND EXISTS (SELECT 1 FROM event_guests eg WHERE eg.event_id = c.event_id AND eg.guest_id = c.guest_id AND eg.deleted_at IS NULL AND eg.status = 'active')
 		ORDER BY created_at DESC
 		LIMIT $3
 	`
@@ -283,10 +289,11 @@ func (r *CheckinRepository) FindDuplicateCheckin(ctx context.Context, tenantID, 
 // GetPeakHour returns the hour with the most check-ins for an event.
 func (r *CheckinRepository) GetPeakHour(ctx context.Context, tenantID, eventID uuid.UUID) (string, error) {
 	query := `
-		SELECT TO_CHAR(DATE_TRUNC('hour', created_at), 'HH24:MI') as peak_hour
-		FROM checkins
-		WHERE tenant_id = $1 AND event_id = $2 AND deleted_at IS NULL AND status = $3
-		GROUP BY DATE_TRUNC('hour', created_at)
+		SELECT TO_CHAR(DATE_TRUNC('hour', c.created_at), 'HH24:MI') as peak_hour
+		FROM checkins c
+		WHERE c.tenant_id = $1 AND c.event_id = $2 AND c.deleted_at IS NULL AND c.status = $3
+		  AND EXISTS (SELECT 1 FROM event_guests eg WHERE eg.event_id = c.event_id AND eg.guest_id = c.guest_id AND eg.deleted_at IS NULL AND eg.status = 'active')
+		GROUP BY DATE_TRUNC('hour', c.created_at)
 		ORDER BY COUNT(*) DESC
 		LIMIT 1
 	`

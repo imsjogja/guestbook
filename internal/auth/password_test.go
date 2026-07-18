@@ -42,8 +42,8 @@ func TestHashPassword(t *testing.T) {
 	t.Run("long password", func(t *testing.T) {
 		longPassword := strings.Repeat("a", 100)
 		_, err := HashPassword(longPassword)
-		if err != nil {
-			t.Fatalf("unexpected error for long password: %v", err)
+		if err == nil {
+			t.Fatal("expected error for long password")
 		}
 	})
 }

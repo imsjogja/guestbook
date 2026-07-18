@@ -120,7 +120,7 @@ func TestJWTService_ValidateAccessToken(t *testing.T) {
 	})
 
 	t.Run("expired token", func(t *testing.T) {
-		shortSvc := NewJWTService("test-access-secret", "test-refresh-secret", -1*time.Second, 7*24*time.Hour)
+		shortSvc := NewJWTService("test-access-secret", "test-refresh-secret", 1*time.Millisecond, 7*24*time.Hour)
 		token, _ := shortSvc.GenerateAccessToken(userID, "test@example.com", uuid.Nil, "")
 
 		time.Sleep(10 * time.Millisecond)

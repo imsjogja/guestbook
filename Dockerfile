@@ -4,7 +4,12 @@
 # ------------------------------------------------------------------------------
 # Builder Stage
 # ------------------------------------------------------------------------------
-FROM golang:1.22-alpine AS builder
+ARG BUILDPLATFORM
+ARG TARGETPLATFORM
+ARG TARGETOS
+ARG TARGETARCH
+
+FROM --platform=$BUILDPLATFORM golang:1.22-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git ca-certificates tzdata
@@ -23,23 +28,30 @@ COPY . .
 
 # Build the server binary with optimizations
 # CGO_ENABLED=0 for static binary, ldflags to strip debug info
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build \
     -ldflags='-w -s -extldflags "-static"' \
     -a -installsuffix cgo \
     -o bin/server \
     ./cmd/server/main.go
 
 # Build the migration binary
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build \
     -ldflags='-w -s -extldflags "-static"' \
     -a -installsuffix cgo \
     -o bin/migrate \
     ./cmd/migrate/main.go
 
+# Build the worker binary
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build \
+    -ldflags='-w -s -extldflags "-static"' \
+    -a -installsuffix cgo \
+    -o bin/worker \
+    ./cmd/worker/main.go
+
 # ------------------------------------------------------------------------------
 # Final Stage
 # ------------------------------------------------------------------------------
-FROM gcr.io/distroless/static:nonroot AS final
+FROM --platform=$TARGETPLATFORM gcr.io/distroless/static:nonroot AS final
 
 # Set working directory
 WORKDIR /app
@@ -47,6 +59,7 @@ WORKDIR /app
 # Copy binary from builder
 COPY --from=builder /build/bin/server /app/server
 COPY --from=builder /build/bin/migrate /app/migrate
+COPY --from=builder /build/bin/worker /app/worker
 
 # Copy migration files
 COPY --from=builder /build/migrations /app/migrations

@@ -29,12 +29,12 @@ func NewInvitationRepository(db *sqlx.DB) *InvitationRepository {
 func (r *InvitationRepository) Create(ctx context.Context, invitation *domain.Invitation) error {
 	query := `
 		INSERT INTO invitations (
-			id, tenant_id, event_id, guest_id, token, token_hash, url,
+			id, tenant_id, event_id, guest_id, event_guest_id, token, token_hash, url,
 			max_pax, adults, children, plus_one_allowed, plus_one_required,
 			status, sent_at, opened_at, revoked_at, revoked_by, revoke_reason,
 			expires_at, created_by, created_at, updated_at, deleted_at
 		) VALUES (
-			:id, :tenant_id, :event_id, :guest_id, :token, :token_hash, :url,
+			:id, :tenant_id, :event_id, :guest_id, :event_guest_id, :token, :token_hash, :url,
 			:max_pax, :adults, :children, :plus_one_allowed, :plus_one_required,
 			:status, :sent_at, :opened_at, :revoked_at, :revoked_by, :revoke_reason,
 			:expires_at, :created_by, :created_at, :updated_at, :deleted_at
@@ -77,6 +77,25 @@ func (r *InvitationRepository) GetByIDForTenant(ctx context.Context, id uuid.UUI
 			return nil, domain.ErrInvitationNotFound
 		}
 		return nil, fmt.Errorf("get invitation by id for tenant: %w", err)
+	}
+	return &invitation, nil
+}
+
+// GetByEventAndGuest retrieves an active invitation by event and guest.
+func (r *InvitationRepository) GetByEventAndGuest(ctx context.Context, eventID, guestID uuid.UUID) (*domain.Invitation, error) {
+	var invitation domain.Invitation
+	query := `
+		SELECT * FROM invitations
+		WHERE event_id = $1 AND guest_id = $2 AND deleted_at IS NULL
+		ORDER BY created_at DESC
+		LIMIT 1
+	`
+	err := r.db.GetContext(ctx, &invitation, query, eventID, guestID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, domain.ErrInvitationNotFound
+		}
+		return nil, fmt.Errorf("get invitation by event and guest: %w", err)
 	}
 	return &invitation, nil
 }

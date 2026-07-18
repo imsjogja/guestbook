@@ -109,10 +109,9 @@ func (r *TenantRepository) ListByUser(ctx context.Context, userID uuid.UUID) ([]
 	var tenants []*domain.Tenant
 	query := `
 		SELECT t.* FROM tenants t
-		INNER JOIN tenant_memberships tm ON t.id = tm.tenant_id
+		INNER JOIN tenant_users tm ON t.id = tm.tenant_id
 		WHERE tm.user_id = $1
 		  AND tm.status = 'active'
-		  AND tm.deleted_at IS NULL
 		  AND t.deleted_at IS NULL
 		ORDER BY t.created_at DESC
 	`

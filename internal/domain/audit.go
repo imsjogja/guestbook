@@ -43,6 +43,7 @@ const (
 	EntityTypeTenant     = "tenant"
 	EntityTypeUser       = "user"
 	EntityTypeGuest      = "guest"
+	EntityTypeEventGuest = "event_guest"
 	EntityTypeEvent      = "event"
 	EntityTypeInvitation = "invitation"
 	EntityTypeRSVP       = "rsvp"

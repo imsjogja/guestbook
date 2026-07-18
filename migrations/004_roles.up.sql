@@ -1,3 +1,5 @@
+-- +goose Up
+-- +goose StatementBegin
 -- Migration 004: Create roles table
 -- Defines roles with associated permissions. System roles have no tenant_id
 -- and are available globally. Tenant-specific roles can be created per tenant.
@@ -49,7 +51,9 @@ INSERT INTO roles (name, display_name, description, permissions, is_system) VALU
 ON CONFLICT DO NOTHING;
 
 -- Trigger to automatically update updated_at timestamp
+DROP TRIGGER IF EXISTS update_roles_updated_at ON roles;
 CREATE TRIGGER update_roles_updated_at
     BEFORE UPDATE ON roles
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
+-- +goose StatementEnd

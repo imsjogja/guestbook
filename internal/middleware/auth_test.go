@@ -56,12 +56,11 @@ func TestJWTAuth(t *testing.T) {
 		})
 
 		err := handler(c)
-		if err == nil {
-			t.Fatal("expected error for missing header")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
 		}
-		he, ok := err.(*echo.HTTPError)
-		if ok && he.Code != http.StatusUnauthorized {
-			t.Errorf("expected status 401, got %d", he.Code)
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("expected status 401, got %d", rec.Code)
 		}
 	})
 
@@ -77,14 +76,17 @@ func TestJWTAuth(t *testing.T) {
 		})
 
 		err := handler(c)
-		if err == nil {
-			t.Fatal("expected error for invalid token")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("expected status 401, got %d", rec.Code)
 		}
 	})
 
 	t.Run("expired token", func(t *testing.T) {
 		e := setupTestEcho()
-		shortService := auth.NewJWTService("test-access", "test-refresh", -1*time.Second, 7*24*time.Hour)
+		shortService := auth.NewJWTService("test-access", "test-refresh", 1*time.Millisecond, 7*24*time.Hour)
 		userID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
 		token, _ := shortService.GenerateAccessToken(userID, "test@example.com", uuid.Nil, "")
 
@@ -93,15 +95,18 @@ func TestJWTAuth(t *testing.T) {
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 
-		// Need to validate with the same service that has negative TTL
+		time.Sleep(10 * time.Millisecond)
 		shortMiddleware := JWTAuth(shortService)
 		handler := shortMiddleware(func(c echo.Context) error {
 			return c.String(http.StatusOK, "success")
 		})
 
 		err := handler(c)
-		if err == nil {
-			t.Fatal("expected error for expired token")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("expected status 401, got %d", rec.Code)
 		}
 	})
 
@@ -117,8 +122,11 @@ func TestJWTAuth(t *testing.T) {
 		})
 
 		err := handler(c)
-		if err == nil {
-			t.Fatal("expected error for wrong auth scheme")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("expected status 401, got %d", rec.Code)
 		}
 	})
 }

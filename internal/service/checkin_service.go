@@ -3,6 +3,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -19,6 +20,7 @@ type CheckinService struct {
 	checkinRepo    *repository.CheckinRepository
 	guestRepo      *repository.GuestRepository
 	invitationRepo *repository.InvitationRepository
+	eventGuestRepo *repository.EventGuestRepository
 	eventRepo      *repository.EventRepository
 	seatingRepo    *repository.SeatingRepository
 	auditSvc       *audit.Service
@@ -29,6 +31,7 @@ func NewCheckinService(
 	checkinRepo *repository.CheckinRepository,
 	guestRepo *repository.GuestRepository,
 	invitationRepo *repository.InvitationRepository,
+	eventGuestRepo *repository.EventGuestRepository,
 	eventRepo *repository.EventRepository,
 	seatingRepo *repository.SeatingRepository,
 	auditSvc *audit.Service,
@@ -37,6 +40,7 @@ func NewCheckinService(
 		checkinRepo:    checkinRepo,
 		guestRepo:      guestRepo,
 		invitationRepo: invitationRepo,
+		eventGuestRepo: eventGuestRepo,
 		eventRepo:      eventRepo,
 		seatingRepo:    seatingRepo,
 		auditSvc:       auditSvc,
@@ -69,15 +73,19 @@ func (s *CheckinService) ProcessQRScan(ctx context.Context, tenantID, eventID uu
 	// The credential lookup would map the token hash to a guest_id and invitation_id.
 	// This is a simplified flow - production would have a separate credential validation step.
 
-	guest, err := s.findGuestByToken(ctx, tenantID, token)
+	guest, invitation, err := s.findGuestByToken(ctx, tenantID, eventID, token)
 	if err != nil {
-		if err == domain.ErrNotFound {
+		if errors.Is(err, domain.ErrNotFound) {
 			return s.recordFailedCheckin(ctx, tenantID, eventID, officerID, req, domain.CheckinStatusInvalid)
 		}
 		return nil, fmt.Errorf("process qr scan: %w", err)
 	}
 
-	return s.performCheckin(ctx, tenantID, eventID, guest.ID, nil, officerID, req)
+	var invitationID *uuid.UUID
+	if invitation != nil {
+		invitationID = &invitation.ID
+	}
+	return s.performCheckin(ctx, tenantID, eventID, guest.ID, invitationID, officerID, req)
 }
 
 // ProcessManualSearch processes a manual search check-in by guest ID.
@@ -89,10 +97,16 @@ func (s *CheckinService) ProcessManualSearch(ctx context.Context, tenantID, even
 	// Verify guest exists and belongs to tenant
 	guest, err := s.guestRepo.GetByIDForTenant(ctx, tenantID, *req.GuestID)
 	if err != nil {
-		if err == domain.ErrNotFound {
+		if errors.Is(err, domain.ErrNotFound) {
 			return s.recordFailedCheckin(ctx, tenantID, eventID, officerID, req, domain.CheckinStatusInvalid)
 		}
 		return nil, fmt.Errorf("process manual check-in: %w", err)
+	}
+	if _, err := s.eventGuestRepo.GetByEventAndGuest(ctx, tenantID, eventID, guest.ID); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return s.recordFailedCheckin(ctx, tenantID, eventID, officerID, req, domain.CheckinStatusWrongEvent)
+		}
+		return nil, fmt.Errorf("process manual check-in: check event roster: %w", err)
 	}
 
 	return s.performCheckin(ctx, tenantID, eventID, guest.ID, nil, officerID, req)
@@ -132,6 +146,17 @@ func (s *CheckinService) ProcessWalkin(ctx context.Context, tenantID, eventID uu
 	guest := domain.NewGuest(tenantID, createdBy, guestReq)
 	if err := s.guestRepo.Create(ctx, guest); err != nil {
 		return nil, fmt.Errorf("create walk-in guest: %w", err)
+	}
+	eventGuest := &domain.EventGuest{
+		Base: domain.NewBase(), TenantID: tenantID, EventID: eventID, GuestID: guest.ID,
+		Status: domain.EventGuestStatusActive, Source: domain.EventGuestSourceWalkIn,
+		MaxPax: req.ActualPax, Adults: req.Adults, Children: req.Children, CreatedBy: createdBy,
+	}
+	if eventGuest.Adults == 0 && eventGuest.Children == 0 {
+		eventGuest.Adults = req.ActualPax
+	}
+	if err := s.eventGuestRepo.Create(ctx, eventGuest); err != nil {
+		return nil, fmt.Errorf("add walk-in guest to event: %w", err)
 	}
 
 	// Build check-in request from walk-in data
@@ -228,21 +253,20 @@ func (s *CheckinService) SearchGuests(ctx context.Context, tenantID, eventID uui
 		return nil, fmt.Errorf("search query is required: %w", domain.ErrInvalidInput)
 	}
 
-	// Search for guests in the tenant
-	params := domain.GuestListParams{
-		TenantID: tenantID,
-		Search:   query,
-		Page:     1,
-		PerPage:  50,
-	}
-
-	guests, err := s.guestRepo.ListByTenant(ctx, params)
+	eventGuests, err := s.eventGuestRepo.List(ctx, domain.EventGuestListParams{
+		TenantID: tenantID, EventID: eventID, Search: query,
+		Status: domain.EventGuestStatusActive, Page: 1, PerPage: 50,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("search guests for checkin: %w", err)
 	}
 
-	results := make([]*domain.GuestSearchResult, 0, len(guests))
-	for _, g := range guests {
+	results := make([]*domain.GuestSearchResult, 0, len(eventGuests))
+	for _, eventGuest := range eventGuests {
+		g := eventGuest.Guest
+		if g == nil {
+			continue
+		}
 		isCheckedIn, err := s.checkinRepo.IsCheckedIn(ctx, tenantID, eventID, g.ID)
 		if err != nil {
 			continue // Skip guests we can't verify
@@ -256,7 +280,7 @@ func (s *CheckinService) SearchGuests(ctx context.Context, tenantID, eventID uui
 			Segment:     g.Segment,
 			RSVPStatus:  "confirmed", // Default - would come from invitation in full implementation
 			IsCheckedIn: isCheckedIn,
-			MaxPax:      1, // Default - would come from invitation in full implementation
+			MaxPax:      eventGuest.MaxPax,
 		}
 
 		// Mask sensitive data for registration officers
@@ -292,6 +316,10 @@ func (s *CheckinService) performCheckin(ctx context.Context, tenantID, eventID, 
 	// Verify event exists
 	if _, err := s.eventRepo.GetByIDForTenant(ctx, eventID, tenantID); err != nil {
 		return nil, fmt.Errorf("perform checkin: event not found: %w", err)
+	}
+	eventGuest, err := s.eventGuestRepo.GetByEventAndGuest(ctx, tenantID, eventID, guestID)
+	if err != nil {
+		return nil, fmt.Errorf("perform checkin: guest is not in event roster: %w", domain.ErrInvalidInput)
 	}
 
 	// Check for duplicate check-in
@@ -350,6 +378,7 @@ func (s *CheckinService) performCheckin(ctx context.Context, tenantID, eventID, 
 		TenantID:       tenantID,
 		EventID:        eventID,
 		GuestID:        guestID,
+		EventGuestID:   &eventGuest.ID,
 		InvitationID:   invitationID,
 		Method:         req.Method,
 		Status:         domain.CheckinStatusSuccess,
@@ -428,60 +457,37 @@ func (s *CheckinService) recordFailedCheckin(ctx context.Context, tenantID, even
 
 // findGuestByToken looks up a guest by a QR token.
 // In production, this would hash the token and look it up in a credentials table.
-func (s *CheckinService) findGuestByToken(ctx context.Context, tenantID uuid.UUID, token string) (*domain.Guest, error) {
+func (s *CheckinService) findGuestByToken(ctx context.Context, tenantID, eventID uuid.UUID, token string) (*domain.Guest, *domain.Invitation, error) {
 	if s.invitationRepo != nil {
 		tokenHash := crypto.SHA256Hash(token)
 		invitation, err := s.invitationRepo.GetByTokenHash(ctx, tokenHash)
 		if err == nil && invitation != nil {
+			if invitation.EventID != eventID {
+				return nil, nil, fmt.Errorf("token belongs to another event: %w", domain.ErrInvalidInput)
+			}
+			if invitation.EventGuestID != nil {
+				if _, rosterErr := s.eventGuestRepo.GetByID(ctx, tenantID, eventID, *invitation.EventGuestID); rosterErr != nil {
+					return nil, nil, fmt.Errorf("invitation guest is not active in event: %w", domain.ErrInvalidInput)
+				}
+			}
 			guest, guestErr := s.guestRepo.GetByIDForTenant(ctx, tenantID, invitation.GuestID)
 			if guestErr == nil && guest != nil {
-				return guest, nil
+				return guest, invitation, nil
 			}
 		}
 	}
-
-	// Try to find by exact phone match (tokens could encode phone numbers)
-	guest, err := s.guestRepo.FindByPhoneOrEmail(ctx, tenantID, token, "")
-	if err == nil && guest != nil {
-		return guest, nil
-	}
-
-	// Try as email
-	guest, err = s.guestRepo.FindByPhoneOrEmail(ctx, tenantID, "", token)
-	if err == nil && guest != nil {
-		return guest, nil
-	}
-
-	// Try searching by name
-	params := domain.GuestListParams{
-		TenantID: tenantID,
-		Search:   token,
-		Page:     1,
-		PerPage:  5,
-	}
-	guests, err := s.guestRepo.ListByTenant(ctx, params)
-	if err == nil && len(guests) > 0 {
-		return guests[0], nil
-	}
-
-	return nil, domain.ErrNotFound
+	return nil, nil, domain.ErrNotFound
 }
 
 // estimateTotalExpected estimates the total expected attendance for an event.
 func (s *CheckinService) estimateTotalExpected(ctx context.Context, tenantID, eventID uuid.UUID) int {
-	// This would typically count invitations or RSVP'd guests
-	// For now, we use a simple heuristic: count active guests in tenant
-	// In a full implementation, this would query the invitations table
-	params := domain.GuestListParams{
-		TenantID: tenantID,
-		Page:     1,
-		PerPage:  1,
+	total, err := s.eventGuestRepo.Count(ctx, domain.EventGuestListParams{
+		TenantID: tenantID, EventID: eventID, Status: domain.EventGuestStatusActive,
+	})
+	if err != nil {
+		return 0
 	}
-	// We can't easily get the count without the full list, so return 0
-	// The caller should handle this gracefully
-	_ = params
-	_ = eventID
-	return 0 // Would be populated from invitation RSVPs in full implementation
+	return total
 }
 
 // maskPhone masks a phone number, showing only last 4 digits.

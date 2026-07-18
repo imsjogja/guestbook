@@ -1,3 +1,5 @@
+-- +goose Up
+-- +goose StatementBegin
 -- GuestFlow - Seed Data for Development
 --
 -- Run after all migrations to populate the database with:
@@ -57,12 +59,12 @@ VALUES (
 );
 
 -- Seed demo user (password: 'password123' - bcrypt hashed)
--- Hash: $2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewKyNiAYMyzJ/I4i
+-- Hash: $2a$12$coSXHcPzsYI8U/ATJCGLdOoteKOz/o0gYhzibamOdQLWLC9tY9oXK
 INSERT INTO users (id, email, password_hash, full_name, phone, status, email_verified_at, created_at, updated_at)
 VALUES (
     'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12',
     'demo@guestflow.id',
-    '$2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewKyNiAYMyzJ/I4i',
+    '$2a$12$coSXHcPzsYI8U/ATJCGLdOoteKOz/o0gYhzibamOdQLWLC9tY9oXK',
     'Demo Event Manager',
     '+6281234567890',
     'active',
@@ -230,3 +232,4 @@ Terima kasih!',
 UPDATE events
 SET primary_location_id = (SELECT id FROM event_locations LIMIT 1)
 WHERE id = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13';
+-- +goose StatementEnd

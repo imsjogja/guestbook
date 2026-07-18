@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"guestflow/internal/domain"
 	"guestflow/internal/service"
 
 	"github.com/google/uuid"

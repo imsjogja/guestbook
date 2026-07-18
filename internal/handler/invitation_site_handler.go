@@ -7,13 +7,13 @@
 package handler
 
 import (
+	stderrors "errors"
 	"html/template"
 	"net/http"
 	"time"
 
 	"guestflow/internal/domain"
 	"guestflow/internal/service"
-	"guestflow/pkg/errors"
 
 	"github.com/labstack/echo/v4"
 )
@@ -133,7 +133,7 @@ func (h *InvitationSiteHandler) ShowInvitation(c echo.Context) error {
 	// Look up the invitation by its opaque token
 	invitation, err := h.invitationService.ValidateToken(c.Request().Context(), token)
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if stderrors.Is(err, domain.ErrNotFound) {
 			return c.HTML(http.StatusNotFound, errorPage("Invitation not found or has been revoked"))
 		}
 		return c.HTML(http.StatusInternalServerError, errorPage("Unable to load invitation. Please try again later."))

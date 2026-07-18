@@ -1,3 +1,5 @@
+-- +goose Up
+-- +goose StatementBegin
 -- Migration 006: Create refresh_tokens table
 -- Stores refresh tokens for JWT authentication with token rotation support.
 -- Tokens are stored as SHA-256 hashes (never store raw tokens).
@@ -28,3 +30,4 @@ CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires
     ON refresh_tokens(expires_at)
     WHERE revoked_at IS NULL;
+-- +goose StatementEnd

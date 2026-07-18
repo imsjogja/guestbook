@@ -1,4 +1,6 @@
-CREATE TABLE event_sessions (
+-- +goose Up
+-- +goose StatementBegin
+CREATE TABLE IF NOT EXISTS event_sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
@@ -12,6 +14,7 @@ CREATE TABLE event_sessions (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_event_sessions_event ON event_sessions(event_id);
-CREATE INDEX idx_event_sessions_time ON event_sessions(start_time, end_time);
-CREATE INDEX idx_event_sessions_sort ON event_sessions(event_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_event_sessions_event ON event_sessions(event_id);
+CREATE INDEX IF NOT EXISTS idx_event_sessions_time ON event_sessions(start_time, end_time);
+CREATE INDEX IF NOT EXISTS idx_event_sessions_sort ON event_sessions(event_id, sort_order);
+-- +goose StatementEnd

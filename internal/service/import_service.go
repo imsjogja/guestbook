@@ -209,6 +209,10 @@ func (s *ImportService) ImportCSV(ctx context.Context, tenantID, createdBy uuid.
 	}
 
 	result.SuccessCount = len(finalGuests)
+	result.ImportedGuestIDs = make([]uuid.UUID, 0, len(finalGuests))
+	for _, guest := range finalGuests {
+		result.ImportedGuestIDs = append(result.ImportedGuestIDs, guest.ID)
+	}
 	return &result, nil
 }
 

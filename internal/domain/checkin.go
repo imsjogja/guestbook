@@ -31,6 +31,7 @@ type Checkin struct {
 	EventID        uuid.UUID  `db:"event_id" json:"event_id"`
 	SessionID      *uuid.UUID `db:"session_id" json:"session_id,omitempty"`
 	GuestID        uuid.UUID  `db:"guest_id" json:"guest_id"`
+	EventGuestID   *uuid.UUID `db:"event_guest_id" json:"event_guest_id,omitempty"`
 	InvitationID   *uuid.UUID `db:"invitation_id" json:"invitation_id,omitempty"`
 	CredentialID   *uuid.UUID `db:"credential_id" json:"credential_id,omitempty"`
 	Method         string     `db:"method" json:"method"`

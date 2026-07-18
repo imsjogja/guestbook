@@ -111,12 +111,14 @@ func (s *DashboardService) GetEventDashboard(ctx context.Context, tenantID, even
 func (s *DashboardService) getCheckinStats(ctx context.Context, tenantID, eventID uuid.UUID) (domain.CheckinStats, error) {
 	var stats domain.CheckinStats
 
-	// Get total expected (attending RSVPs)
+	// Get total expected from the active event roster. RSVP is a response state,
+	// not the source of truth for who belongs to the event.
 	var totalExpected int
 	query := `
-		SELECT COALESCE(SUM(attending_pax), 0)
-		FROM rsvp_responses
-		WHERE tenant_id = $1 AND event_id = $2 AND status = 'attending'
+		SELECT COUNT(*)
+		FROM event_guests
+		WHERE tenant_id = $1 AND event_id = $2
+		  AND status = 'active' AND deleted_at IS NULL
 	`
 	if err := s.db.GetContext(ctx, &totalExpected, query, tenantID, eventID); err != nil {
 		return stats, fmt.Errorf("count expected: %w", err)
@@ -126,8 +128,9 @@ func (s *DashboardService) getCheckinStats(ctx context.Context, tenantID, eventI
 	// Get total checked in (unique guests)
 	var totalCheckedIn int
 	query = `
-		SELECT COUNT(DISTINCT guest_id) FROM checkins
-		WHERE tenant_id = $1 AND event_id = $2 AND status = 'success' AND deleted_at IS NULL
+		SELECT COUNT(DISTINCT c.guest_id) FROM checkins c
+		WHERE c.tenant_id = $1 AND c.event_id = $2 AND c.status = 'success' AND c.deleted_at IS NULL
+		  AND EXISTS (SELECT 1 FROM event_guests eg WHERE eg.event_id = c.event_id AND eg.guest_id = c.guest_id AND eg.deleted_at IS NULL AND eg.status = 'active')
 	`
 	if err := s.db.GetContext(ctx, &totalCheckedIn, query, tenantID, eventID); err != nil {
 		return stats, fmt.Errorf("count checked in: %w", err)
@@ -137,8 +140,9 @@ func (s *DashboardService) getCheckinStats(ctx context.Context, tenantID, eventI
 	// Get total pax (actual people checked in)
 	var totalPax int
 	query = `
-		SELECT COALESCE(SUM(actual_pax), 0) FROM checkins
-		WHERE tenant_id = $1 AND event_id = $2 AND status = 'success' AND deleted_at IS NULL
+		SELECT COALESCE(SUM(c.actual_pax), 0) FROM checkins c
+		WHERE c.tenant_id = $1 AND c.event_id = $2 AND c.status = 'success' AND c.deleted_at IS NULL
+		  AND EXISTS (SELECT 1 FROM event_guests eg WHERE eg.event_id = c.event_id AND eg.guest_id = c.guest_id AND eg.deleted_at IS NULL AND eg.status = 'active')
 	`
 	if err := s.db.GetContext(ctx, &totalPax, query, tenantID, eventID); err != nil {
 		return stats, fmt.Errorf("count total pax: %w", err)
@@ -148,8 +152,9 @@ func (s *DashboardService) getCheckinStats(ctx context.Context, tenantID, eventI
 	// Get walk-ins count
 	var walkIns int
 	query = `
-		SELECT COUNT(*) FROM checkins
-		WHERE tenant_id = $1 AND event_id = $2 AND method = 'walk_in' AND deleted_at IS NULL
+		SELECT COUNT(DISTINCT c.guest_id) FROM checkins c
+		WHERE c.tenant_id = $1 AND c.event_id = $2 AND c.method = 'walk_in' AND c.deleted_at IS NULL
+		  AND EXISTS (SELECT 1 FROM event_guests eg WHERE eg.event_id = c.event_id AND eg.guest_id = c.guest_id AND eg.deleted_at IS NULL AND eg.status = 'active')
 	`
 	if err := s.db.GetContext(ctx, &walkIns, query, tenantID, eventID); err != nil {
 		return stats, fmt.Errorf("count walk-ins: %w", err)
@@ -283,6 +288,7 @@ func (s *DashboardService) getSeatingStats(ctx context.Context, tenantID, eventI
 		SELECT COUNT(*) FROM seat_assignments sa
 		JOIN tables t ON sa.table_id = t.id
 		WHERE t.tenant_id = $1 AND t.event_id = $2 AND t.deleted_at IS NULL
+		  AND EXISTS (SELECT 1 FROM event_guests eg WHERE eg.event_id = t.event_id AND eg.guest_id = sa.guest_id AND eg.deleted_at IS NULL AND eg.status = 'active')
 	`
 	if err := s.db.GetContext(ctx, &occupiedSeats, query, tenantID, eventID); err != nil {
 		return stats, fmt.Errorf("count occupied seats: %w", err)

@@ -93,6 +93,7 @@ type CommunicationMessage struct {
 	CampaignID   *uuid.UUID `db:"campaign_id" json:"campaign_id,omitempty"`
 	EventID      uuid.UUID  `db:"event_id" json:"event_id"`
 	GuestID      uuid.UUID  `db:"guest_id" json:"guest_id"`
+	EventGuestID *uuid.UUID `db:"event_guest_id" json:"event_guest_id,omitempty"`
 	InvitationID *uuid.UUID `db:"invitation_id" json:"invitation_id,omitempty"`
 	Channel      string     `db:"channel" json:"channel"`
 	Type         string     `db:"type" json:"type"`

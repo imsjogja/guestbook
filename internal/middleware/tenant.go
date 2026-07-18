@@ -164,6 +164,7 @@ func defaultTenantSkipper(c echo.Context) bool {
 		"/api/v1/auth/refresh",
 		"/api/v1/auth/forgot-password",
 		"/api/v1/auth/reset-password",
+		"/api/v1/tenants",
 	}
 
 	for _, pp := range publicPaths {

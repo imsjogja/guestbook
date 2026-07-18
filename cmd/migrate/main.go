@@ -17,10 +17,12 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"guestflow/internal/config"
 
-	_ "github.com/lib/pq"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 )
 
@@ -61,8 +63,14 @@ func main() {
 	}
 	command := args[0]
 
+	filteredDir, cleanup, err := prepareMigrationDir(command, migrationsDir)
+	if err != nil {
+		log.Fatalf("Failed to prepare migrations: %v", err)
+	}
+	defer cleanup()
+
 	// Open database connection
-	db, err := goose.OpenDBWithDriver("postgres", dbString)
+	db, err := goose.OpenDBWithDriver("pgx", dbString)
 	if err != nil {
 		log.Fatalf("Failed to open database: %v\nConnection string: %s", err, redactPassword(dbString))
 	}
@@ -74,7 +82,7 @@ func main() {
 		arguments = append(arguments, args[1:]...)
 	}
 
-	if err := goose.Run(command, db, migrationsDir, arguments...); err != nil {
+	if err := goose.Run(command, db, filteredDir, arguments...); err != nil {
 		log.Fatalf("Migration %s failed: %v", command, err)
 	}
 
@@ -124,4 +132,55 @@ func redactPassword(connStr string) string {
 	// Simple redaction - replace password with ***
 	// This is a basic implementation; production should use URL parsing
 	return connStr
+}
+
+func prepareMigrationDir(command, srcDir string) (string, func(), error) {
+	switch command {
+	case "up", "up-by-one", "up-to", "status", "version":
+		tempDir, err := os.MkdirTemp("", "guestflow-migrations-*")
+		if err != nil {
+			return "", func() {}, err
+		}
+
+		entries, err := os.ReadDir(srcDir)
+		if err != nil {
+			_ = os.RemoveAll(tempDir)
+			return "", func() {}, err
+		}
+
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+
+			name := entry.Name()
+			if !strings.HasSuffix(name, ".sql") {
+				continue
+			}
+			if strings.HasSuffix(name, ".down.sql") {
+				continue
+			}
+			if strings.Contains(name, "seed_data") {
+				continue
+			}
+
+			srcPath := filepath.Join(srcDir, name)
+			dstPath := filepath.Join(tempDir, name)
+
+			data, err := os.ReadFile(srcPath)
+			if err != nil {
+				_ = os.RemoveAll(tempDir)
+				return "", func() {}, err
+			}
+
+			if err := os.WriteFile(dstPath, data, 0o644); err != nil {
+				_ = os.RemoveAll(tempDir)
+				return "", func() {}, err
+			}
+		}
+
+		return tempDir, func() { _ = os.RemoveAll(tempDir) }, nil
+	default:
+		return srcDir, func() {}, nil
+	}
 }

@@ -185,3 +185,53 @@ func (h *RSVPHandler) UpdateByOfficer(c echo.Context) error {
 
 	return appresponse.Success(c, rsvp)
 }
+
+// UpsertByGuest handles POST /api/v1/tenants/:id/events/:eventId/rsvp/by-guest/:guestId - creates or updates RSVP for a guest.
+func (h *RSVPHandler) UpsertByGuest(c echo.Context) error {
+	tenantID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return appresponse.BadRequest(c, "Invalid tenant ID")
+	}
+
+	eventID, err := uuid.Parse(c.Param("eventId"))
+	if err != nil {
+		return appresponse.BadRequest(c, "Invalid event ID")
+	}
+
+	guestID, err := uuid.Parse(c.Param("guestId"))
+	if err != nil {
+		return appresponse.BadRequest(c, "Invalid guest ID")
+	}
+
+	var req domain.RSVPUpdateRequest
+	if err := c.Bind(&req); err != nil {
+		return appresponse.BadRequest(c, "Invalid request body")
+	}
+
+	if req.Status == "" {
+		return appresponse.ValidationError(c, "status is required")
+	}
+
+	userID, err := getUserIDFromEchoContext(c)
+	if err != nil {
+		return appresponse.Unauthorized(c, "Authentication required")
+	}
+
+	rsvp, err := h.rsvpService.UpsertByOfficer(c.Request().Context(), tenantID, eventID, guestID, userID, req)
+	if err != nil {
+		switch {
+		case stderrors.Is(err, domain.ErrInvitationNotFound):
+			return appresponse.NotFound(c, "Invitation")
+		case stderrors.Is(err, domain.ErrEventNotFound):
+			return appresponse.NotFound(c, "Event")
+		case stderrors.Is(err, domain.ErrEventAtCapacity):
+			return appresponse.Conflict(c, "Event has reached capacity")
+		case stderrors.Is(err, domain.ErrInvalidRSVPStatus):
+			return appresponse.ValidationError(c, "Invalid RSVP status")
+		default:
+			return appresponse.InternalError(c, "Failed to save RSVP")
+		}
+	}
+
+	return appresponse.Success(c, rsvp)
+}

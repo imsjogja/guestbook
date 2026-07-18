@@ -1,4 +1,6 @@
-CREATE TABLE events (
+-- +goose Up
+-- +goose StatementBegin
+CREATE TABLE IF NOT EXISTS events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
@@ -23,7 +25,8 @@ CREATE TABLE events (
     deleted_at TIMESTAMPTZ
 );
 
-CREATE INDEX idx_events_tenant ON events(tenant_id, deleted_at);
-CREATE INDEX idx_events_status ON events(status);
-CREATE INDEX idx_events_dates ON events(start_date, end_date);
-CREATE INDEX idx_events_tenant_status ON events(tenant_id, status, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_events_tenant ON events(tenant_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_events_status ON events(status);
+CREATE INDEX IF NOT EXISTS idx_events_dates ON events(start_date, end_date);
+CREATE INDEX IF NOT EXISTS idx_events_tenant_status ON events(tenant_id, status, deleted_at);
+-- +goose StatementEnd

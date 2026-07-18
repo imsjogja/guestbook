@@ -57,7 +57,7 @@ func (r *UserRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Use
 	err := r.db.GetContext(ctx, &user, query, id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("user not found: %w", err)
+			return nil, fmt.Errorf("get user by id: %w", domain.ErrUserNotFound)
 		}
 		return nil, fmt.Errorf("get user by id: %w", err)
 	}
@@ -78,7 +78,7 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*domain.
 	err := r.db.GetContext(ctx, &user, query, email)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("user not found: %w", err)
+			return nil, fmt.Errorf("get user by email: %w", domain.ErrUserNotFound)
 		}
 		return nil, fmt.Errorf("get user by email: %w", err)
 	}

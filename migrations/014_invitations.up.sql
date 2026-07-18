@@ -2,7 +2,7 @@
 -- +goose StatementBegin
 
 -- invitations table: stores guest invitations with opaque token hashes
-CREATE TABLE invitations (
+CREATE TABLE IF NOT EXISTS invitations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
@@ -29,18 +29,18 @@ CREATE TABLE invitations (
 );
 
 -- Indexes for efficient lookups
-CREATE INDEX idx_invitations_tenant ON invitations(tenant_id, deleted_at);
-CREATE INDEX idx_invitations_event ON invitations(event_id, deleted_at);
-CREATE INDEX idx_invitations_guest ON invitations(guest_id);
-CREATE INDEX idx_invitations_token_hash ON invitations(token_hash);
-CREATE INDEX idx_invitations_status ON invitations(status);
-CREATE INDEX idx_invitations_event_status ON invitations(event_id, status, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_invitations_tenant ON invitations(tenant_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_invitations_event ON invitations(event_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_invitations_guest ON invitations(guest_id);
+CREATE INDEX IF NOT EXISTS idx_invitations_token_hash ON invitations(token_hash);
+CREATE INDEX IF NOT EXISTS idx_invitations_status ON invitations(status);
+CREATE INDEX IF NOT EXISTS idx_invitations_event_status ON invitations(event_id, status, deleted_at);
 
 -- Unique constraint: one active invitation per guest per event
-CREATE UNIQUE INDEX idx_invitations_unique_active ON invitations(event_id, guest_id) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_invitations_unique_active ON invitations(event_id, guest_id) WHERE deleted_at IS NULL;
 
 -- credential_usage_log table: tracks scans and usage of invitation credentials
-CREATE TABLE credential_usage_log (
+CREATE TABLE IF NOT EXISTS credential_usage_log (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     invitation_id UUID NOT NULL REFERENCES invitations(id) ON DELETE CASCADE,
     event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
@@ -54,9 +54,9 @@ CREATE TABLE credential_usage_log (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_credential_usage_invitation ON credential_usage_log(invitation_id);
-CREATE INDEX idx_credential_usage_event ON credential_usage_log(event_id);
-CREATE INDEX idx_credential_usage_type ON credential_usage_log(type);
-CREATE INDEX idx_credential_usage_created ON credential_usage_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_credential_usage_invitation ON credential_usage_log(invitation_id);
+CREATE INDEX IF NOT EXISTS idx_credential_usage_event ON credential_usage_log(event_id);
+CREATE INDEX IF NOT EXISTS idx_credential_usage_type ON credential_usage_log(type);
+CREATE INDEX IF NOT EXISTS idx_credential_usage_created ON credential_usage_log(created_at);
 
 -- +goose StatementEnd

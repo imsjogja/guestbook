@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -16,6 +17,7 @@ import (
 type TenantService struct {
 	tenantRepo     *repository.TenantRepository
 	tenantUserRepo *repository.TenantUserRepository
+	userRepo       *repository.UserRepository
 	audit          *audit.Service
 }
 
@@ -23,13 +25,21 @@ type TenantService struct {
 func NewTenantService(
 	tenantRepo *repository.TenantRepository,
 	tenantUserRepo *repository.TenantUserRepository,
+	userRepo *repository.UserRepository,
 	audit *audit.Service,
 ) *TenantService {
 	return &TenantService{
 		tenantRepo:     tenantRepo,
 		tenantUserRepo: tenantUserRepo,
+		userRepo:       userRepo,
 		audit:          audit,
 	}
+}
+
+// TenantMemberRecord pairs a tenant membership with its user profile.
+type TenantMemberRecord struct {
+	Membership *domain.TenantMembership
+	User       *domain.User
 }
 
 // Create creates a new tenant and adds the creator as the tenant owner.
@@ -145,6 +155,31 @@ func (s *TenantService) ListMyTenants(ctx context.Context, userID uuid.UUID) ([]
 	return tenants, nil
 }
 
+// ListMembers returns the active members for a tenant, joined with user profiles.
+func (s *TenantService) ListMembers(ctx context.Context, tenantID uuid.UUID) ([]TenantMemberRecord, error) {
+	memberships, err := s.tenantUserRepo.ListByTenant(ctx, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("list tenant members: %w", err)
+	}
+
+	records := make([]TenantMemberRecord, 0, len(memberships))
+	for _, membership := range memberships {
+		user, userErr := s.userRepo.GetByID(ctx, membership.UserID)
+		if userErr != nil {
+			if errors.Is(userErr, domain.ErrUserNotFound) {
+				continue
+			}
+			return nil, fmt.Errorf("list tenant members: get user %s: %w", membership.UserID, userErr)
+		}
+		records = append(records, TenantMemberRecord{
+			Membership: membership,
+			User:       user,
+		})
+	}
+
+	return records, nil
+}
+
 // InviteUser invites a user to a tenant by email address.
 func (s *TenantService) InviteUser(ctx context.Context, tenantID, invitedBy uuid.UUID, email, role string) error {
 	// Validate role.
@@ -162,17 +197,29 @@ func (s *TenantService) InviteUser(ctx context.Context, tenantID, invitedBy uuid
 		return fmt.Errorf("invite user: %w", err)
 	}
 
-	// TODO: Look up user by email in the user repository.
-	// For now, we assume the user exists and we have their ID.
-	// In a real implementation, this would:
-	// 1. Find the user by email
-	// 2. If not found, send an invitation email to register
-	// 3. Create a pending membership
+	user, err := s.userRepo.GetByEmail(ctx, email)
+	if err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			return domain.ErrUserNotFound
+		}
+		return fmt.Errorf("invite user: lookup user: %w", err)
+	}
 
 	// Check if membership already exists.
-	existing, err := s.tenantUserRepo.Get(ctx, tenantID, uuid.Nil) // would look up by email-derived userID
+	existing, err := s.tenantUserRepo.Get(ctx, tenantID, user.ID)
 	if err == nil && existing != nil {
 		return domain.ErrAlreadyExists
+	}
+	if err != nil && !errors.Is(err, domain.ErrMembershipNotFound) {
+		return fmt.Errorf("invite user: check membership: %w", err)
+	}
+
+	membership := domain.NewTenantMembership(tenantID, user.ID, role, &invitedBy)
+	membership.Status = domain.MembershipStatusPending
+	membership.JoinedAt = nil
+
+	if err := s.tenantUserRepo.Create(ctx, membership); err != nil {
+		return fmt.Errorf("invite user: create membership: %w", err)
 	}
 
 	// Audit log.
@@ -180,9 +227,6 @@ func (s *TenantService) InviteUser(ctx context.Context, tenantID, invitedBy uuid
 		"email": email,
 		"role":  role,
 	})
-
-	// Placeholder: actual implementation would create membership and send email.
-	_ = email
 
 	return nil
 }

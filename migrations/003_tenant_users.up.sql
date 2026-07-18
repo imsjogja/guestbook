@@ -1,3 +1,5 @@
+-- +goose Up
+-- +goose StatementBegin
 -- Migration 003: Create tenant_users table
 -- Links users to tenants with a specific role. A user can belong to
 -- multiple tenants with different roles in each.
@@ -27,7 +29,9 @@ CREATE INDEX IF NOT EXISTS idx_tenant_users_tenant_id ON tenant_users(tenant_id)
 CREATE INDEX IF NOT EXISTS idx_tenant_users_role ON tenant_users(tenant_id, role) WHERE status = 'active';
 
 -- Trigger to automatically update updated_at timestamp
+DROP TRIGGER IF EXISTS update_tenant_users_updated_at ON tenant_users;
 CREATE TRIGGER update_tenant_users_updated_at
     BEFORE UPDATE ON tenant_users
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
+-- +goose StatementEnd

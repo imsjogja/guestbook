@@ -53,11 +53,12 @@ type Table struct {
 
 // SeatAssignment represents a guest assigned to a table
 type SeatAssignment struct {
-	TableID    uuid.UUID `db:"table_id" json:"table_id"`
-	GuestID    uuid.UUID `db:"guest_id" json:"guest_id"`
-	SeatNumber *int      `db:"seat_number" json:"seat_number,omitempty"`
-	AssignedBy uuid.UUID `db:"assigned_by" json:"assigned_by"`
-	AssignedAt time.Time `db:"assigned_at" json:"assigned_at"`
+	TableID      uuid.UUID  `db:"table_id" json:"table_id"`
+	GuestID      uuid.UUID  `db:"guest_id" json:"guest_id"`
+	EventGuestID *uuid.UUID `db:"event_guest_id" json:"event_guest_id,omitempty"`
+	SeatNumber   *int       `db:"seat_number" json:"seat_number,omitempty"`
+	AssignedBy   uuid.UUID  `db:"assigned_by" json:"assigned_by"`
+	AssignedAt   time.Time  `db:"assigned_at" json:"assigned_at"`
 }
 
 // TableCreateRequest input for creating a table
@@ -97,11 +98,11 @@ type TableWithOccupancy struct {
 
 // AssignedGuest represents a guest assigned to a table for layout view
 type AssignedGuest struct {
-	GuestID    uuid.UUID `json:"guest_id"`
-	FullName   string    `json:"full_name"`
-	GuestType  string    `json:"guest_type"`
-	SeatNumber *int      `json:"seat_number,omitempty"`
-	AssignedAt time.Time `json:"assigned_at"`
+	GuestID    uuid.UUID `db:"guest_id" json:"guest_id"`
+	FullName   string    `db:"full_name" json:"full_name"`
+	GuestType  string    `db:"guest_type" json:"guest_type"`
+	SeatNumber *int      `db:"seat_number" json:"seat_number,omitempty"`
+	AssignedAt time.Time `db:"assigned_at" json:"assigned_at"`
 }
 
 // SeatingLayout represents the full seating layout for an event

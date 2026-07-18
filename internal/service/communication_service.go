@@ -16,21 +16,24 @@ import (
 
 // CommunicationService handles business logic for templates, campaigns, and messages.
 type CommunicationService struct {
-	commRepo  *repository.CommunicationRepository
-	guestRepo *repository.GuestRepository
-	eventRepo *repository.EventRepository
+	commRepo       *repository.CommunicationRepository
+	guestRepo      *repository.GuestRepository
+	eventGuestRepo *repository.EventGuestRepository
+	eventRepo      *repository.EventRepository
 }
 
 // NewCommunicationService creates a new CommunicationService.
 func NewCommunicationService(
 	commRepo *repository.CommunicationRepository,
 	guestRepo *repository.GuestRepository,
+	eventGuestRepo *repository.EventGuestRepository,
 	eventRepo *repository.EventRepository,
 ) *CommunicationService {
 	return &CommunicationService{
-		commRepo:  commRepo,
-		guestRepo: guestRepo,
-		eventRepo: eventRepo,
+		commRepo:       commRepo,
+		guestRepo:      guestRepo,
+		eventGuestRepo: eventGuestRepo,
+		eventRepo:      eventRepo,
 	}
 }
 
@@ -280,7 +283,7 @@ func (s *CommunicationService) SendMessage(ctx context.Context, tenantID, eventI
 	}
 
 	// Get event
-	event, err := s.eventRepo.GetByID(ctx, eventID)
+	event, err := s.eventRepo.GetByIDForTenant(ctx, eventID, tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("get event: %w", err)
 	}
@@ -289,6 +292,11 @@ func (s *CommunicationService) SendMessage(ctx context.Context, tenantID, eventI
 	var messages []*domain.CommunicationMessage
 
 	for _, guestID := range req.GuestIDs {
+		eventGuest, err := s.eventGuestRepo.GetByEventAndGuest(ctx, tenantID, eventID, guestID)
+		if err != nil {
+			return nil, fmt.Errorf("get event guest %s: guest is not in event roster: %w", guestID, domain.ErrInvalidInput)
+		}
+
 		// Get guest
 		guest, err := s.guestRepo.GetByIDForTenant(ctx, tenantID, guestID)
 		if err != nil {
@@ -314,13 +322,14 @@ func (s *CommunicationService) SendMessage(ctx context.Context, tenantID, eventI
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
-			TenantID: tenantID,
-			EventID:  eventID,
-			GuestID:  guestID,
-			Channel:  template.Channel,
-			Type:     template.Type,
-			Body:     renderedBody,
-			Status:   domain.MessageStatusQueued,
+			TenantID:     tenantID,
+			EventID:      eventID,
+			GuestID:      guestID,
+			EventGuestID: &eventGuest.ID,
+			Channel:      template.Channel,
+			Type:         template.Type,
+			Body:         renderedBody,
+			Status:       domain.MessageStatusQueued,
 		}
 
 		if template.Subject != nil {
@@ -499,7 +508,11 @@ func (s *CommunicationService) SendCampaign(ctx context.Context, tenantID, event
 	}
 
 	// Get event
-	event, err := s.eventRepo.GetByID(ctx, eventID)
+	if campaign.EventID != eventID {
+		return fmt.Errorf("send campaign: campaign belongs to another event: %w", domain.ErrInvalidInput)
+	}
+
+	event, err := s.eventRepo.GetByIDForTenant(ctx, eventID, tenantID)
 	if err != nil {
 		return fmt.Errorf("get event: %w", err)
 	}
@@ -507,33 +520,28 @@ func (s *CommunicationService) SendCampaign(ctx context.Context, tenantID, event
 	// Build recipient filter from campaign
 	var guestIDs []uuid.UUID
 	if campaign.RecipientFilter != nil {
-		// Parse recipient filter to determine target guests
-		// For now, fetch all active guests for the event and apply filter
-		params := domain.GuestListParams{
+		roster, err := s.eventGuestRepo.List(ctx, domain.EventGuestListParams{
 			TenantID: tenantID,
+			EventID:  eventID,
+			Status:   domain.EventGuestStatusActive,
 			Page:     1,
-			PerPage:  10000,
-		}
-
-		// Apply simple filter if present
-		if gf, ok := campaign.RecipientFilter["guest_type"]; ok {
-			if gs, ok := gf.(string); ok {
-				params.GuestType = gs
-			}
-		}
-		if sf, ok := campaign.RecipientFilter["segment"]; ok {
-			if ss, ok := sf.(string); ok {
-				params.Segment = ss
-			}
-		}
-
-		guests, err := s.guestRepo.ListByTenant(ctx, params)
+			PerPage:  100,
+		})
 		if err != nil {
 			return fmt.Errorf("list recipients: %w", err)
 		}
 
-		for _, g := range guests {
-			guestIDs = append(guestIDs, g.ID)
+		for _, rosterGuest := range roster {
+			if rosterGuest.Guest == nil {
+				continue
+			}
+			if gf, ok := campaign.RecipientFilter["guest_type"].(string); ok && gf != "" && rosterGuest.Guest.GuestType != gf {
+				continue
+			}
+			if sf, ok := campaign.RecipientFilter["segment"].(string); ok && sf != "" && (rosterGuest.Guest.Segment == nil || *rosterGuest.Guest.Segment != sf) {
+				continue
+			}
+			guestIDs = append(guestIDs, rosterGuest.GuestID)
 		}
 	}
 
@@ -552,6 +560,11 @@ func (s *CommunicationService) SendCampaign(ctx context.Context, tenantID, event
 	failedCount := 0
 
 	for _, guestID := range guestIDs {
+		eventGuest, rosterErr := s.eventGuestRepo.GetByEventAndGuest(ctx, tenantID, eventID, guestID)
+		if rosterErr != nil {
+			failedCount++
+			continue
+		}
 		guest, err := s.guestRepo.GetByIDForTenant(ctx, tenantID, guestID)
 		if err != nil {
 			failedCount++
@@ -568,14 +581,15 @@ func (s *CommunicationService) SendCampaign(ctx context.Context, tenantID, event
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
-			TenantID:   tenantID,
-			CampaignID: &campaignID,
-			EventID:    eventID,
-			GuestID:    guestID,
-			Channel:    campaign.Channel,
-			Type:       campaign.Type,
-			Body:       renderedBody,
-			Status:     domain.MessageStatusQueued,
+			TenantID:     tenantID,
+			CampaignID:   &campaignID,
+			EventID:      eventID,
+			GuestID:      guestID,
+			EventGuestID: &eventGuest.ID,
+			Channel:      campaign.Channel,
+			Type:         campaign.Type,
+			Body:         renderedBody,
+			Status:       domain.MessageStatusQueued,
 		}
 
 		if template.Subject != nil {
