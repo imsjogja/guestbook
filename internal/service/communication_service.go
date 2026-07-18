@@ -475,36 +475,32 @@ func (s *CommunicationService) SendMessage(ctx context.Context, tenantID, eventI
 			if guest.Phone != nil {
 				phone = *guest.Phone
 			}
-			externalID, sendErr := s.whatsapp.Send(ctx, phone, renderedBody)
+			receipt, sendErr := s.whatsapp.Send(ctx, phone, renderedBody)
 			if sendErr != nil {
 				failedAt := time.Now().UTC()
 				errorMessage := sendErr.Error()
-				_ = s.commRepo.UpdateMessageStatus(ctx, tenantID, msg.ID, domain.MessageStatusFailed, nil, nil, nil, &failedAt, &errorMessage, nil, nil)
-				if invitation != nil && s.invitationRepo != nil {
-					if err := s.invitationRepo.MarkFailed(ctx, invitation.ID, tenantID, errorMessage); err != nil {
-						return nil, fmt.Errorf("mark invitation %s as failed: %w", invitation.ID, err)
-					}
+				var providerHTTPStatus *int
+				var providerErr *whatsapp.ProviderError
+				if errors.As(sendErr, &providerErr) && providerErr.StatusCode > 0 {
+					providerHTTPStatus = &providerErr.StatusCode
 				}
+				_ = s.commRepo.UpdateMessageStatus(ctx, tenantID, msg.ID, domain.MessageStatusFailed, nil, nil, nil, &failedAt, &errorMessage, nil, providerHTTPStatus, nil)
 				msg.Status = domain.MessageStatusFailed
 				msg.FailedAt = &failedAt
 				msg.ErrorMessage = &errorMessage
 			} else {
 				sentAt := time.Now().UTC()
 				var providerID *string
-				if externalID != "" {
-					providerID = &externalID
+				if receipt.ExternalID != "" {
+					providerID = &receipt.ExternalID
 				}
-				if err := s.commRepo.UpdateMessageStatus(ctx, tenantID, msg.ID, domain.MessageStatusSent, &sentAt, nil, nil, nil, nil, providerID, nil); err != nil {
+				providerHTTPStatus := &receipt.HTTPStatus
+				if err := s.commRepo.UpdateMessageStatus(ctx, tenantID, msg.ID, domain.MessageStatusSent, &sentAt, nil, nil, nil, nil, providerID, providerHTTPStatus, nil); err != nil {
 					return nil, fmt.Errorf("update sent message %s: %w", msg.ID, err)
 				}
 				msg.Status = domain.MessageStatusSent
 				msg.SentAt = &sentAt
 				msg.ExternalID = providerID
-				if invitation != nil && s.invitationRepo != nil {
-					if err := s.invitationRepo.MarkSent(ctx, invitation.ID, tenantID); err != nil {
-						return nil, fmt.Errorf("mark invitation %s as sent: %w", invitation.ID, err)
-					}
-				}
 			}
 		}
 
@@ -795,28 +791,28 @@ func (s *CommunicationService) SendCampaign(ctx context.Context, tenantID, event
 			if guest.Phone != nil {
 				phone = *guest.Phone
 			}
-			externalID, sendErr := s.whatsapp.Send(ctx, phone, renderedBody)
+			receipt, sendErr := s.whatsapp.Send(ctx, phone, renderedBody)
 			if sendErr != nil {
 				failedAt := time.Now().UTC()
 				errorMessage := sendErr.Error()
-				_ = s.commRepo.UpdateMessageStatus(ctx, tenantID, msg.ID, domain.MessageStatusFailed, nil, nil, nil, &failedAt, &errorMessage, nil, nil)
-				if invitation != nil && s.invitationRepo != nil {
-					_ = s.invitationRepo.MarkFailed(ctx, invitation.ID, tenantID, errorMessage)
+				var providerHTTPStatus *int
+				var providerErr *whatsapp.ProviderError
+				if errors.As(sendErr, &providerErr) && providerErr.StatusCode > 0 {
+					providerHTTPStatus = &providerErr.StatusCode
 				}
+				_ = s.commRepo.UpdateMessageStatus(ctx, tenantID, msg.ID, domain.MessageStatusFailed, nil, nil, nil, &failedAt, &errorMessage, nil, providerHTTPStatus, nil)
 				failedCount++
 				continue
 			}
 			sentAt := time.Now().UTC()
 			var providerID *string
-			if externalID != "" {
-				providerID = &externalID
+			if receipt.ExternalID != "" {
+				providerID = &receipt.ExternalID
 			}
-			if err := s.commRepo.UpdateMessageStatus(ctx, tenantID, msg.ID, domain.MessageStatusSent, &sentAt, nil, nil, nil, nil, providerID, nil); err != nil {
+			providerHTTPStatus := &receipt.HTTPStatus
+			if err := s.commRepo.UpdateMessageStatus(ctx, tenantID, msg.ID, domain.MessageStatusSent, &sentAt, nil, nil, nil, nil, providerID, providerHTTPStatus, nil); err != nil {
 				failedCount++
 				continue
-			}
-			if invitation != nil && s.invitationRepo != nil {
-				_ = s.invitationRepo.MarkSent(ctx, invitation.ID, tenantID)
 			}
 		}
 		sentCount++

@@ -307,7 +307,7 @@ All protected endpoints require:
 
 ### WhatsApp Delivery Flow
 
-WhatsApp delivery is available from the guest detail action, invitation row action, selected invitations, and communication campaigns. All paths use the same `messages/send` service so every delivery is logged per guest and the invitation status is updated when a message is accepted by Blastr.
+WhatsApp delivery is available from the guest detail action, invitation row action, selected invitations, and communication campaigns. All paths use the same `messages/send` service so every attempt is logged per guest in `communication_messages`. The invitation lifecycle (`draft`, `opened`, `responded`, `revoked`) is separate from delivery status (`not_sent`, `queued`, `sent`, `failed`, `delivered`, `read`). A `sent` message means Blastr accepted the request at the recorded `provider_http_status`; `delivered` and `read` require provider receipts.
 
 Every new tenant is automatically provisioned with the standard WhatsApp and email invitation templates. Adding another member to an existing tenant does not create duplicates; the generator endpoint can be called again safely if a tenant needs to repair or restore its defaults.
 

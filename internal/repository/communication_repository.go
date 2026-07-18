@@ -431,13 +431,13 @@ func (r *CommunicationRepository) CreateMessage(ctx context.Context, message *do
 			id, tenant_id, campaign_id, event_id, guest_id, event_guest_id, invitation_id,
 			channel, type, subject, body, status,
 			sent_at, delivered_at, read_at, failed_at,
-			error_message, external_id, cost,
+			error_message, external_id, provider_http_status, cost,
 			created_at, updated_at
 		) VALUES (
 			:id, :tenant_id, :campaign_id, :event_id, :guest_id, :event_guest_id, :invitation_id,
 			:channel, :type, :subject, :body, :status,
 			:sent_at, :delivered_at, :read_at, :failed_at,
-			:error_message, :external_id, :cost,
+			:error_message, :external_id, :provider_http_status, :cost,
 			:created_at, :updated_at
 		)
 	`
@@ -467,16 +467,16 @@ func (r *CommunicationRepository) GetMessage(ctx context.Context, tenantID, id u
 }
 
 // UpdateMessageStatus updates the status and related fields of a message.
-func (r *CommunicationRepository) UpdateMessageStatus(ctx context.Context, tenantID, id uuid.UUID, status string, sentAt, deliveredAt, readAt, failedAt *time.Time, errorMessage, externalID *string, cost *float64) error {
+func (r *CommunicationRepository) UpdateMessageStatus(ctx context.Context, tenantID, id uuid.UUID, status string, sentAt, deliveredAt, readAt, failedAt *time.Time, errorMessage, externalID *string, providerHTTPStatus *int, cost *float64) error {
 	now := time.Now().UTC()
 	query := `
 		UPDATE communication_messages
 		SET status = $1, sent_at = $2, delivered_at = $3, read_at = $4,
-		    failed_at = $5, error_message = $6, external_id = $7, cost = $8,
-		    updated_at = $9
-		WHERE id = $10 AND tenant_id = $11
+		    failed_at = $5, error_message = $6, external_id = $7, provider_http_status = $8, cost = $9,
+		    updated_at = $10
+		WHERE id = $11 AND tenant_id = $12
 	`
-	_, err := r.db.ExecContext(ctx, query, status, sentAt, deliveredAt, readAt, failedAt, errorMessage, externalID, cost, now, id, tenantID)
+	_, err := r.db.ExecContext(ctx, query, status, sentAt, deliveredAt, readAt, failedAt, errorMessage, externalID, providerHTTPStatus, cost, now, id, tenantID)
 	if err != nil {
 		return fmt.Errorf("update message status: %w", err)
 	}

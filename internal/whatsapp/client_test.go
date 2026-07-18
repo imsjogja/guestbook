@@ -58,11 +58,44 @@ func TestClientSendUsesBlastrHeadersAndPayload(t *testing.T) {
 		SenderToken:  "sender-token",
 	})
 
-	id, err := client.Send(context.Background(), "081234567890", "Halo")
+	receipt, err := client.Send(context.Background(), "081234567890", "Halo")
 	if err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
-	if id != "blastr-123" {
-		t.Fatalf("Send() id = %q, want %q", id, "blastr-123")
+	if receipt.ExternalID != "blastr-123" {
+		t.Fatalf("Send() external id = %q, want %q", receipt.ExternalID, "blastr-123")
+	}
+	if receipt.HTTPStatus != http.StatusOK {
+		t.Fatalf("Send() HTTP status = %d, want %d", receipt.HTTPStatus, http.StatusOK)
+	}
+}
+
+func TestClientSendPreservesProviderHTTPFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"invalid recipient"}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(config.WhatsAppConfig{
+		Enabled:      true,
+		APIURL:       server.URL,
+		AccountToken: "account-token",
+		SenderToken:  "sender-token",
+	})
+
+	receipt, err := client.Send(context.Background(), "081234567890", "Halo")
+	if err == nil {
+		t.Fatal("Send() error = nil, want provider error")
+	}
+	providerErr, ok := err.(*ProviderError)
+	if !ok {
+		t.Fatalf("Send() error type = %T, want *ProviderError", err)
+	}
+	if providerErr.StatusCode != http.StatusBadRequest {
+		t.Fatalf("provider status = %d, want %d", providerErr.StatusCode, http.StatusBadRequest)
+	}
+	if receipt.HTTPStatus != http.StatusBadRequest {
+		t.Fatalf("receipt HTTP status = %d, want %d", receipt.HTTPStatus, http.StatusBadRequest)
 	}
 }

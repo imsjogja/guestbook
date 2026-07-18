@@ -22,6 +22,24 @@ var (
 	ErrInvalidPhone  = errors.New("guest WhatsApp number is invalid")
 )
 
+// SendReceipt records the provider acknowledgement for one send attempt.
+// A successful HTTP response means the provider accepted the request; delivery
+// and read receipts require a separate provider callback.
+type SendReceipt struct {
+	ExternalID string
+	HTTPStatus int
+}
+
+// ProviderError preserves the provider HTTP status for an auditable failure.
+type ProviderError struct {
+	StatusCode int
+	Message    string
+}
+
+func (e *ProviderError) Error() string {
+	return e.Message
+}
+
 var phoneDigits = regexp.MustCompile(`[^0-9]`)
 
 // Client sends WhatsApp messages through the configured provider.
@@ -62,26 +80,26 @@ func NormalizePhone(raw string) (string, error) {
 }
 
 // Send posts a plain text message to the Blastr public API.
-func (c *Client) Send(ctx context.Context, to, message string) (string, error) {
+func (c *Client) Send(ctx context.Context, to, message string) (SendReceipt, error) {
 	if !c.Configured() {
-		return "", ErrNotConfigured
+		return SendReceipt{}, ErrNotConfigured
 	}
 	phone, err := NormalizePhone(to)
 	if err != nil {
-		return "", err
+		return SendReceipt{}, err
 	}
 	if strings.TrimSpace(message) == "" {
-		return "", errors.New("whatsapp message is empty")
+		return SendReceipt{}, errors.New("whatsapp message is empty")
 	}
 
 	payload, err := json.Marshal(map[string]string{"to": phone, "message": message})
 	if err != nil {
-		return "", fmt.Errorf("marshal whatsapp request: %w", err)
+		return SendReceipt{}, fmt.Errorf("marshal whatsapp request: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.APIURL, bytes.NewReader(payload))
 	if err != nil {
-		return "", fmt.Errorf("create whatsapp request: %w", err)
+		return SendReceipt{}, fmt.Errorf("create whatsapp request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+c.cfg.AccountToken)
@@ -89,19 +107,25 @@ func (c *Client) Send(ctx context.Context, to, message string) (string, error) {
 
 	res, err := c.httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("send whatsapp request: %w", err)
+		return SendReceipt{}, fmt.Errorf("send whatsapp request: %w", err)
 	}
 	defer res.Body.Close()
 
 	body, err := io.ReadAll(io.LimitReader(res.Body, 64*1024))
 	if err != nil {
-		return "", fmt.Errorf("read whatsapp response: %w", err)
+		return SendReceipt{}, fmt.Errorf("read whatsapp response: %w", err)
 	}
 	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices {
-		return "", fmt.Errorf("whatsapp provider returned %s: %s", res.Status, strings.TrimSpace(string(body)))
+		return SendReceipt{HTTPStatus: res.StatusCode}, &ProviderError{
+			StatusCode: res.StatusCode,
+			Message:    fmt.Sprintf("whatsapp provider returned %s: %s", res.Status, strings.TrimSpace(string(body))),
+		}
 	}
 
-	return providerMessageID(body), nil
+	return SendReceipt{
+		ExternalID: providerMessageID(body),
+		HTTPStatus: res.StatusCode,
+	}, nil
 }
 
 func providerMessageID(body []byte) string {

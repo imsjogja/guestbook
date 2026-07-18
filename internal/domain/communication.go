@@ -89,24 +89,25 @@ type CommunicationCampaign struct {
 // CommunicationMessage represents an individual message
 type CommunicationMessage struct {
 	Base
-	TenantID     uuid.UUID  `db:"tenant_id" json:"tenant_id"`
-	CampaignID   *uuid.UUID `db:"campaign_id" json:"campaign_id,omitempty"`
-	EventID      uuid.UUID  `db:"event_id" json:"event_id"`
-	GuestID      uuid.UUID  `db:"guest_id" json:"guest_id"`
-	EventGuestID *uuid.UUID `db:"event_guest_id" json:"event_guest_id,omitempty"`
-	InvitationID *uuid.UUID `db:"invitation_id" json:"invitation_id,omitempty"`
-	Channel      string     `db:"channel" json:"channel"`
-	Type         string     `db:"type" json:"type"`
-	Subject      *string    `db:"subject" json:"subject,omitempty"`
-	Body         string     `db:"body" json:"body"`
-	Status       string     `db:"status" json:"status"`
-	SentAt       *time.Time `db:"sent_at" json:"sent_at,omitempty"`
-	DeliveredAt  *time.Time `db:"delivered_at" json:"delivered_at,omitempty"`
-	ReadAt       *time.Time `db:"read_at" json:"read_at,omitempty"`
-	FailedAt     *time.Time `db:"failed_at" json:"failed_at,omitempty"`
-	ErrorMessage *string    `db:"error_message" json:"error_message,omitempty"`
-	ExternalID   *string    `db:"external_id" json:"external_id,omitempty"` // Provider message ID
-	Cost         *float64   `db:"cost" json:"cost,omitempty"`
+	TenantID           uuid.UUID  `db:"tenant_id" json:"tenant_id"`
+	CampaignID         *uuid.UUID `db:"campaign_id" json:"campaign_id,omitempty"`
+	EventID            uuid.UUID  `db:"event_id" json:"event_id"`
+	GuestID            uuid.UUID  `db:"guest_id" json:"guest_id"`
+	EventGuestID       *uuid.UUID `db:"event_guest_id" json:"event_guest_id,omitempty"`
+	InvitationID       *uuid.UUID `db:"invitation_id" json:"invitation_id,omitempty"`
+	Channel            string     `db:"channel" json:"channel"`
+	Type               string     `db:"type" json:"type"`
+	Subject            *string    `db:"subject" json:"subject,omitempty"`
+	Body               string     `db:"body" json:"body"`
+	Status             string     `db:"status" json:"status"`
+	SentAt             *time.Time `db:"sent_at" json:"sent_at,omitempty"`
+	DeliveredAt        *time.Time `db:"delivered_at" json:"delivered_at,omitempty"`
+	ReadAt             *time.Time `db:"read_at" json:"read_at,omitempty"`
+	FailedAt           *time.Time `db:"failed_at" json:"failed_at,omitempty"`
+	ErrorMessage       *string    `db:"error_message" json:"error_message,omitempty"`
+	ExternalID         *string    `db:"external_id" json:"external_id,omitempty"` // Provider message ID
+	ProviderHTTPStatus *int       `db:"provider_http_status" json:"provider_http_status,omitempty"`
+	Cost               *float64   `db:"cost" json:"cost,omitempty"`
 }
 
 // CommunicationTemplateCreateRequest input for creating a template

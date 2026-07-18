@@ -153,10 +153,27 @@ func (r *InvitationRepository) ListByEvent(ctx context.Context, params domain.In
 			g.full_name as guest_full_name,
 			g.email as guest_email,
 			g.phone as guest_phone,
-			COALESCE(r.status, 'not_sent') as rsvp_status
+			COALESCE(r.status, 'not_sent') as rsvp_status,
+			COALESCE(dm.status, 'not_sent') as delivery_status,
+			dm.channel as delivery_channel,
+			dm.sent_at as delivery_sent_at,
+			dm.delivered_at as delivery_delivered_at,
+			dm.read_at as delivery_read_at,
+			dm.failed_at as delivery_failed_at,
+			dm.error_message as delivery_error_message,
+			dm.external_id as delivery_external_id,
+			dm.provider_http_status as delivery_provider_http_status
 		FROM invitations i
 		JOIN guests g ON i.guest_id = g.id
 		LEFT JOIN rsvp_responses r ON i.id = r.invitation_id
+		LEFT JOIN LATERAL (
+			SELECT cm.status, cm.channel, cm.sent_at, cm.delivered_at, cm.read_at,
+				cm.failed_at, cm.error_message, cm.external_id, cm.provider_http_status
+			FROM communication_messages cm
+			WHERE cm.invitation_id = i.id AND cm.event_id = i.event_id
+			ORDER BY cm.created_at DESC
+			LIMIT 1
+		) dm ON TRUE
 		WHERE ` + strings.Join(conditions, " AND ") + `
 		ORDER BY i.created_at DESC
 		LIMIT $` + fmt.Sprintf("%d", argIdx) + ` OFFSET $` + fmt.Sprintf("%d", argIdx+1) + `
@@ -220,54 +237,6 @@ func (r *InvitationRepository) UpdateStatus(ctx context.Context, id uuid.UUID, t
 	rows, err := result.RowsAffected()
 	if err != nil {
 		return fmt.Errorf("check status update result: %w", err)
-	}
-	if rows == 0 {
-		return domain.ErrInvitationNotFound
-	}
-
-	return nil
-}
-
-// MarkSent records when an invitation was sent.
-func (r *InvitationRepository) MarkSent(ctx context.Context, id uuid.UUID, tenantID uuid.UUID) error {
-	now := time.Now().UTC()
-	query := `
-		UPDATE invitations
-		SET status = $1, sent_at = $2, failed_reason = NULL, updated_at = $2
-		WHERE id = $3 AND tenant_id = $4 AND deleted_at IS NULL
-	`
-	result, err := r.db.ExecContext(ctx, query, domain.InvitationStatusSent, now, id, tenantID)
-	if err != nil {
-		return fmt.Errorf("mark invitation sent: %w", err)
-	}
-
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("check sent update result: %w", err)
-	}
-	if rows == 0 {
-		return domain.ErrInvitationNotFound
-	}
-
-	return nil
-}
-
-// MarkFailed records a provider failure for an invitation.
-func (r *InvitationRepository) MarkFailed(ctx context.Context, id uuid.UUID, tenantID uuid.UUID, reason string) error {
-	now := time.Now().UTC()
-	query := `
-		UPDATE invitations
-		SET status = $1, failed_reason = $2, updated_at = $3
-		WHERE id = $4 AND tenant_id = $5 AND deleted_at IS NULL
-	`
-	result, err := r.db.ExecContext(ctx, query, domain.InvitationStatusFailed, reason, now, id, tenantID)
-	if err != nil {
-		return fmt.Errorf("mark invitation failed: %w", err)
-	}
-
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("check failed update result: %w", err)
 	}
 	if rows == 0 {
 		return domain.ErrInvitationNotFound

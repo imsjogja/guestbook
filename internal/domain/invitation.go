@@ -89,10 +89,19 @@ type InvitationListParams struct {
 // InvitationWithGuest extends Invitation with guest details for list views.
 type InvitationWithGuest struct {
 	Invitation
-	GuestFullName string  `db:"guest_full_name" json:"guest_full_name"`
-	GuestEmail    *string `db:"guest_email" json:"guest_email,omitempty"`
-	GuestPhone    *string `db:"guest_phone" json:"guest_phone,omitempty"`
-	RSVPStatus    string  `db:"rsvp_status" json:"rsvp_status"`
+	GuestFullName              string     `db:"guest_full_name" json:"guest_full_name"`
+	GuestEmail                 *string    `db:"guest_email" json:"guest_email,omitempty"`
+	GuestPhone                 *string    `db:"guest_phone" json:"guest_phone,omitempty"`
+	RSVPStatus                 string     `db:"rsvp_status" json:"rsvp_status"`
+	DeliveryStatus             string     `db:"delivery_status" json:"delivery_status"`
+	DeliveryChannel            *string    `db:"delivery_channel" json:"delivery_channel,omitempty"`
+	DeliverySentAt             *time.Time `db:"delivery_sent_at" json:"delivery_sent_at,omitempty"`
+	DeliveryDeliveredAt        *time.Time `db:"delivery_delivered_at" json:"delivery_delivered_at,omitempty"`
+	DeliveryReadAt             *time.Time `db:"delivery_read_at" json:"delivery_read_at,omitempty"`
+	DeliveryFailedAt           *time.Time `db:"delivery_failed_at" json:"delivery_failed_at,omitempty"`
+	DeliveryErrorMessage       *string    `db:"delivery_error_message" json:"delivery_error_message,omitempty"`
+	DeliveryExternalID         *string    `db:"delivery_external_id" json:"delivery_external_id,omitempty"`
+	DeliveryProviderHTTPStatus *int       `db:"delivery_provider_http_status" json:"delivery_provider_http_status,omitempty"`
 }
 
 // QRCodeData represents the data returned for QR code generation.

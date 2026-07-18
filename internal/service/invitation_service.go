@@ -347,25 +347,6 @@ func (s *InvitationService) RecordOpen(ctx context.Context, token string, ipAddr
 	return nil
 }
 
-// Send marks invitations as sent.
-func (s *InvitationService) Send(ctx context.Context, tenantID, eventID uuid.UUID, invitationIDs []uuid.UUID, sentBy uuid.UUID) error {
-	for _, id := range invitationIDs {
-		if err := s.invitationRepo.MarkSent(ctx, id, tenantID); err != nil {
-			if errors.Is(err, domain.ErrInvitationNotFound) {
-				continue // Skip not found
-			}
-			return fmt.Errorf("send invitation %s: %w", id, err)
-		}
-	}
-
-	// Audit log.
-	_ = s.auditSvc.LogWithUser(ctx, sentBy, tenantID, domain.AuditActionSend, domain.EntityTypeInvitation, eventID, nil, map[string]interface{}{
-		"count": len(invitationIDs),
-	})
-
-	return nil
-}
-
 // CountByEvent returns invitation counts by status for an event.
 func (s *InvitationService) CountByEvent(ctx context.Context, tenantID, eventID uuid.UUID) (map[string]int, error) {
 	counts, err := s.invitationRepo.CountByStatus(ctx, eventID)
