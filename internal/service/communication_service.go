@@ -24,7 +24,31 @@ type CommunicationService struct {
 	eventRepo      *repository.EventRepository
 	invitationRepo *repository.InvitationRepository
 	whatsapp       *whatsapp.Client
+	whatsappConfig WhatsAppConfigProvider
 	baseURL        string
+}
+
+// SetWhatsAppConfigProvider enables tenant-scoped runtime credentials while
+// preserving the environment-backed fallback used by existing callers/tests.
+func (s *CommunicationService) SetWhatsAppConfigProvider(provider WhatsAppConfigProvider) {
+	s.whatsappConfig = provider
+}
+
+func (s *CommunicationService) prepareWhatsApp(ctx context.Context, tenantID uuid.UUID) error {
+	if s.whatsapp == nil {
+		return whatsapp.ErrNotConfigured
+	}
+	if s.whatsappConfig != nil {
+		cfg, err := s.whatsappConfig.ResolveWhatsAppConfig(ctx, tenantID)
+		if err != nil {
+			return fmt.Errorf("resolve WhatsApp integration: %w", err)
+		}
+		s.whatsapp.SetTenantConfig(tenantID, cfg)
+	}
+	if !s.whatsapp.ConfiguredFor(tenantID) {
+		return whatsapp.ErrNotConfigured
+	}
+	return nil
 }
 
 // DefaultTemplateDefinition describes a system-provided invitation template.
@@ -383,8 +407,8 @@ func (s *CommunicationService) SendMessage(ctx context.Context, tenantID, eventI
 
 	// Validate the entire WhatsApp batch before creating any records or calling the provider.
 	if template.Channel == domain.ChannelWhatsApp {
-		if s.whatsapp == nil || !s.whatsapp.Configured() {
-			return nil, whatsapp.ErrNotConfigured
+		if err := s.prepareWhatsApp(ctx, tenantID); err != nil {
+			return nil, err
 		}
 		for _, guestID := range req.GuestIDs {
 			eventGuest, err := s.eventGuestRepo.GetByEventAndGuest(ctx, tenantID, eventID, guestID)
@@ -475,7 +499,7 @@ func (s *CommunicationService) SendMessage(ctx context.Context, tenantID, eventI
 			if guest.Phone != nil {
 				phone = *guest.Phone
 			}
-			receipt, sendErr := s.whatsapp.Send(ctx, phone, renderedBody)
+			receipt, sendErr := s.whatsapp.SendFor(ctx, tenantID, phone, renderedBody)
 			if sendErr != nil {
 				failedAt := time.Now().UTC()
 				errorMessage := sendErr.Error()
@@ -676,8 +700,10 @@ func (s *CommunicationService) SendCampaign(ctx context.Context, tenantID, event
 	if !template.IsActive {
 		return domain.ErrTemplateInactive
 	}
-	if campaign.Channel == domain.ChannelWhatsApp && (s.whatsapp == nil || !s.whatsapp.Configured()) {
-		return whatsapp.ErrNotConfigured
+	if campaign.Channel == domain.ChannelWhatsApp {
+		if err := s.prepareWhatsApp(ctx, tenantID); err != nil {
+			return err
+		}
 	}
 
 	// Get event
@@ -798,7 +824,7 @@ func (s *CommunicationService) SendCampaign(ctx context.Context, tenantID, event
 			if guest.Phone != nil {
 				phone = *guest.Phone
 			}
-			receipt, sendErr := s.whatsapp.Send(ctx, phone, renderedBody)
+			receipt, sendErr := s.whatsapp.SendFor(ctx, tenantID, phone, renderedBody)
 			if sendErr != nil {
 				failedAt := time.Now().UTC()
 				errorMessage := sendErr.Error()

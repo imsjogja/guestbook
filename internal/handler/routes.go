@@ -26,6 +26,7 @@ func RegisterRoutes(
 	checkinHandler *CheckinHandler,
 	seatingHandler *SeatingHandler,
 	communicationHandler *CommunicationHandler,
+	whatsappIntegrationHandler *WhatsAppIntegrationHandler,
 	dashboardHandler *DashboardHandler,
 	invitationSiteHandler *InvitationSiteHandler,
 	htmxDashboardHandler *HTMXDashboardHandler,
@@ -68,6 +69,8 @@ func RegisterRoutes(
 	tenantTeamWrite := middleware.RequirePermission(rbacService, domain.PermTeamWrite)
 	tenantTeamInvite := middleware.RequirePermission(rbacService, domain.PermTeamInvite)
 	tenantCommunicationWrite := middleware.RequirePermission(rbacService, domain.PermCommunicationWrite)
+	tenantSettingsRead := middleware.RequirePermission(rbacService, domain.PermSettingsRead)
+	tenantSettingsWrite := middleware.RequirePermission(rbacService, domain.PermSettingsWrite)
 	tenants.POST("", tenantHandler.Create)
 	tenants.GET("", tenantHandler.List)
 	tenants.GET("/:id", tenantHandler.Get)
@@ -198,6 +201,12 @@ func RegisterRoutes(
 	templates.GET("/:templateId", communicationHandler.GetTemplate)
 	templates.PATCH("/:templateId", communicationHandler.UpdateTemplate)
 	templates.DELETE("/:templateId", communicationHandler.DeleteTemplate)
+
+	// Tenant-scoped integration settings. Credentials are encrypted at rest and
+	// are never returned; PATCH applies them to the runtime client immediately.
+	integrations := tenants.Group("/:id/integrations")
+	integrations.GET("/whatsapp", whatsappIntegrationHandler.Get, tenantSettingsRead)
+	integrations.PATCH("/whatsapp", whatsappIntegrationHandler.Update, tenantSettingsWrite)
 
 	// Communication message routes (protected, tenant-scoped, nested under events).
 	messages := events.Group("/:eventId/messages")

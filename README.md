@@ -276,6 +276,8 @@ OpenAPI 3.0 specification available at `docs/api/openapi.yaml`.
 | `GET`  | `/api/v1/auth/me` | Current user |
 | `POST` | `/api/v1/tenants` | Create tenant |
 | `GET`  | `/api/v1/tenants/:id` | Get tenant |
+| `GET`  | `/api/v1/tenants/:id/integrations/whatsapp` | Get masked WhatsApp integration status |
+| `PATCH` | `/api/v1/tenants/:id/integrations/whatsapp` | Save and apply WhatsApp credentials |
 | `GET`  | `/api/v1/tenants/:id/events` | List events |
 | `POST` | `/api/v1/tenants/:id/events` | Create event |
 | `GET`  | `/api/v1/tenants/:id/events/:eventId/members/access` | Get effective event access |
@@ -319,6 +321,8 @@ Every new tenant is automatically provisioned with the standard WhatsApp and ema
 ```
 
 Before a batch is sent, the API verifies that every guest belongs to the selected event and has a valid WhatsApp number. An empty or invalid number returns `422` and no message in that batch is sent. Provider credentials that are missing or disabled return `503`.
+
+WhatsApp credentials can be managed from **Pengaturan > Integrasi**. The UI never receives token values back; tenant overrides are encrypted at rest using `JWT_SECRET` as the key derivation input. Saving the form applies the new credentials immediately to the running service. After a restart, the backend resolves the encrypted tenant configuration on the first send, so no container restart is required for normal changes. `WHATSAPP_ACCOUNT_TOKEN` and `WHATSAPP_SENDER_TOKEN` remain the environment fallback for tenants without an override.
 
 ---
 
@@ -419,6 +423,8 @@ All configuration is via environment variables. Copy `.env.example` to `.env` an
 | `WHATSAPP_API_URL` | Blastr send endpoint | `https://app.blastr.id/api/pub/send` |
 | `WHATSAPP_ACCOUNT_TOKEN` | Blastr account bearer token | *(required when enabled)* |
 | `WHATSAPP_SENDER_TOKEN` | Blastr sender token | *(required when enabled)* |
+
+Tenant-specific WhatsApp credentials are managed through the integration endpoints above and take precedence over these environment fallback values.
 
 See `.env.example` for full configuration options.
 

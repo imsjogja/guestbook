@@ -86,7 +86,7 @@ func (h *TenantHandler) Create(c echo.Context) error {
 		}
 	}
 
-	return c.JSON(http.StatusCreated, TenantResponse{Data: tenant})
+	return c.JSON(http.StatusCreated, TenantResponse{Data: publicTenant(tenant)})
 }
 
 // Get handles GET /api/v1/tenants/:id - retrieves a tenant.
@@ -104,7 +104,7 @@ func (h *TenantHandler) Get(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, TenantResponse{Error: "failed to retrieve tenant"})
 	}
 
-	return c.JSON(http.StatusOK, TenantResponse{Data: tenant})
+	return c.JSON(http.StatusOK, TenantResponse{Data: publicTenant(tenant)})
 }
 
 // Update handles PATCH /api/v1/tenants/:id - updates a tenant.
@@ -132,7 +132,7 @@ func (h *TenantHandler) Update(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, TenantResponse{Error: "failed to update tenant"})
 	}
 
-	return c.JSON(http.StatusOK, TenantResponse{Data: tenant})
+	return c.JSON(http.StatusOK, TenantResponse{Data: publicTenant(tenant)})
 }
 
 // List handles GET /api/v1/tenants - lists the current user's tenants.
@@ -147,7 +147,29 @@ func (h *TenantHandler) List(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, TenantResponse{Error: "failed to list tenants"})
 	}
 
-	return c.JSON(http.StatusOK, TenantResponse{Data: tenants})
+	publicTenants := make([]*domain.Tenant, 0, len(tenants))
+	for _, tenant := range tenants {
+		publicTenants = append(publicTenants, publicTenant(tenant))
+	}
+	return c.JSON(http.StatusOK, TenantResponse{Data: publicTenants})
+}
+
+// publicTenant removes encrypted integration metadata from general tenant
+// responses. Integration status has its own endpoint with a safe DTO.
+func publicTenant(tenant *domain.Tenant) *domain.Tenant {
+	if tenant == nil {
+		return nil
+	}
+	copyTenant := *tenant
+	if tenant.Settings != nil {
+		copyTenant.Settings = make(domain.JSONMap, len(tenant.Settings))
+		for key, value := range tenant.Settings {
+			if key != "integrations" {
+				copyTenant.Settings[key] = value
+			}
+		}
+	}
+	return &copyTenant
 }
 
 // Access handles GET /api/v1/tenants/:id/access.

@@ -11,9 +11,12 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"guestflow/internal/config"
+
+	"github.com/google/uuid"
 )
 
 var (
@@ -56,7 +59,9 @@ var phoneDigits = regexp.MustCompile(`[^0-9]`)
 
 // Client sends WhatsApp messages through the configured provider.
 type Client struct {
+	mu         sync.RWMutex
 	cfg        config.WhatsAppConfig
+	tenantCfg  map[uuid.UUID]config.WhatsAppConfig
 	httpClient *http.Client
 }
 
@@ -64,14 +69,31 @@ type Client struct {
 func NewClient(cfg config.WhatsAppConfig) *Client {
 	return &Client{
 		cfg:        cfg,
+		tenantCfg:  make(map[uuid.UUID]config.WhatsAppConfig),
 		httpClient: &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
 // Configured reports whether the provider can accept a delivery request.
 func (c *Client) Configured() bool {
-	return c != nil && c.cfg.Enabled && strings.TrimSpace(c.cfg.APIURL) != "" &&
-		strings.TrimSpace(c.cfg.AccountToken) != "" && strings.TrimSpace(c.cfg.SenderToken) != ""
+	return configured(c.configForTenant(uuid.Nil))
+}
+
+// SetTenantConfig applies a tenant-specific provider configuration in memory.
+// The integration service persists the encrypted source and calls this method
+// after every update, so no process restart is needed for new credentials.
+func (c *Client) SetTenantConfig(tenantID uuid.UUID, cfg config.WhatsAppConfig) {
+	if c == nil || tenantID == uuid.Nil {
+		return
+	}
+	c.mu.Lock()
+	c.tenantCfg[tenantID] = cfg
+	c.mu.Unlock()
+}
+
+// ConfiguredFor reports whether WhatsApp is ready for a tenant.
+func (c *Client) ConfiguredFor(tenantID uuid.UUID) bool {
+	return configured(c.configForTenant(tenantID))
 }
 
 // NormalizePhone converts common Indonesian phone formats into provider format.
@@ -93,7 +115,16 @@ func NormalizePhone(raw string) (string, error) {
 
 // Send posts a plain text message to the Blastr public API.
 func (c *Client) Send(ctx context.Context, to, message string) (SendReceipt, error) {
-	if !c.Configured() {
+	return c.sendWithConfig(ctx, c.configForTenant(uuid.Nil), to, message)
+}
+
+// SendFor sends using the tenant-specific configuration when one exists.
+func (c *Client) SendFor(ctx context.Context, tenantID uuid.UUID, to, message string) (SendReceipt, error) {
+	return c.sendWithConfig(ctx, c.configForTenant(tenantID), to, message)
+}
+
+func (c *Client) sendWithConfig(ctx context.Context, cfg config.WhatsAppConfig, to, message string) (SendReceipt, error) {
+	if !configured(cfg) {
 		return SendReceipt{}, ErrNotConfigured
 	}
 	phone, err := NormalizePhone(to)
@@ -109,13 +140,13 @@ func (c *Client) Send(ctx context.Context, to, message string) (SendReceipt, err
 		return SendReceipt{}, fmt.Errorf("marshal whatsapp request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.APIURL, bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.APIURL, bytes.NewReader(payload))
 	if err != nil {
 		return SendReceipt{}, fmt.Errorf("create whatsapp request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.cfg.AccountToken)
-	req.Header.Set("X-Sender-Token", c.cfg.SenderToken)
+	req.Header.Set("Authorization", "Bearer "+cfg.AccountToken)
+	req.Header.Set("X-Sender-Token", cfg.SenderToken)
 
 	res, err := c.httpClient.Do(req)
 	if err != nil {
@@ -159,6 +190,25 @@ func (c *Client) Send(ctx context.Context, to, message string) (SendReceipt, err
 		AttemptedAt: parseProviderTime(providerResponse.AttemptedAt),
 		SentAt:      parseProviderTime(providerResponse.SentAt),
 	}, nil
+}
+
+func (c *Client) configForTenant(tenantID uuid.UUID) config.WhatsAppConfig {
+	if c == nil {
+		return config.WhatsAppConfig{}
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if tenantID != uuid.Nil {
+		if cfg, ok := c.tenantCfg[tenantID]; ok {
+			return cfg
+		}
+	}
+	return c.cfg
+}
+
+func configured(cfg config.WhatsAppConfig) bool {
+	return cfg.Enabled && strings.TrimSpace(cfg.APIURL) != "" &&
+		strings.TrimSpace(cfg.AccountToken) != "" && strings.TrimSpace(cfg.SenderToken) != ""
 }
 
 func parseProviderResponse(body []byte) (providerSendResponse, error) {
