@@ -64,6 +64,9 @@ COPY --from=builder /build/bin/worker /app/worker
 # Copy migration files
 COPY --from=builder /build/migrations /app/migrations
 
+# Copy guest-facing templates and static assets used by the invitation site.
+COPY --from=builder /build/web /app/web
+
 # Copy CA certificates for HTTPS calls
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
