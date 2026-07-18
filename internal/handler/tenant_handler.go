@@ -53,6 +53,7 @@ type tenantMemberResponse struct {
 	AcceptedAt  string                   `json:"acceptedAt,omitempty"`
 	Status      string                   `json:"status"`
 	Permissions []string                 `json:"permissions"`
+	RoleKey     string                   `json:"roleKey"`
 }
 
 // Create handles POST /api/v1/tenants - creates a new tenant.
@@ -205,7 +206,8 @@ func (h *TenantHandler) ListUsers(c echo.Context) error {
 			InvitedAt:   invitedAt,
 			AcceptedAt:  acceptedAt,
 			Status:      mapMembershipStatusToUI(member.Membership.Status),
-			Permissions: []string{},
+			Permissions: append([]string(nil), domain.RolePermissions[member.Membership.Role]...),
+			RoleKey:     member.Membership.Role,
 		})
 	}
 

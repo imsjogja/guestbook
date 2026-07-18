@@ -85,7 +85,7 @@ func (r *TenantUserRepository) ListByTenant(ctx context.Context, tenantID uuid.U
 	var memberships []*domain.TenantMembership
 	query := `
 		SELECT * FROM tenant_users
-		WHERE tenant_id = $1
+		WHERE tenant_id = $1 AND status <> 'inactive'
 		ORDER BY created_at DESC
 	`
 	err := r.db.SelectContext(ctx, &memberships, query, tenantID)
