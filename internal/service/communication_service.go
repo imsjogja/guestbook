@@ -85,6 +85,36 @@ func DefaultInvitationTemplates() []DefaultTemplateDefinition {
 	}
 }
 
+// Default RSVP reminder template names, used to resolve the fallback template
+// when a reminder batch is sent without an explicit template_id.
+const (
+	DefaultRSVPReminderTemplateWhatsApp = "Pengingat RSVP WhatsApp"
+	DefaultRSVPReminderTemplateEmail    = "Pengingat RSVP Email"
+)
+
+// DefaultRSVPReminderTemplates returns the built-in WhatsApp and email RSVP reminder templates.
+func DefaultRSVPReminderTemplates() []DefaultTemplateDefinition {
+	return []DefaultTemplateDefinition{
+		{
+			Name:        DefaultRSVPReminderTemplateWhatsApp,
+			Channel:     domain.ChannelWhatsApp,
+			Type:        domain.MsgTypeRSVPFollowUp,
+			Body:        "Halo {{guest_name}},\n\nKami menunggu konfirmasi kehadiran Anda untuk acara {{event_name}} pada {{event_date}} pukul {{event_time}}.\n\nMohon konfirmasi melalui tautan berikut:\n{{rsvp_link}}\n\nTerima kasih.",
+			Variables:   []string{"guest_name", "event_name", "event_date", "event_time", "rsvp_link"},
+			Description: "Template pengingat konfirmasi RSVP melalui WhatsApp.",
+		},
+		{
+			Name:        DefaultRSVPReminderTemplateEmail,
+			Channel:     domain.ChannelEmail,
+			Type:        domain.MsgTypeRSVPFollowUp,
+			Subject:     "Pengingat Konfirmasi Kehadiran {{event_name}}",
+			Body:        "<!doctype html><html><body><p>Halo {{guest_name}},</p><p>Kami menunggu konfirmasi kehadiran Anda untuk acara <strong>{{event_name}}</strong>.</p><p>Tanggal: {{event_date}}<br>Waktu: {{event_time}}</p><p><a href=\"{{rsvp_link}}\">Konfirmasi kehadiran Anda di sini</a></p><p>Terima kasih.</p></body></html>",
+			Variables:   []string{"guest_name", "event_name", "event_date", "event_time", "rsvp_link"},
+			Description: "Template pengingat konfirmasi RSVP melalui email.",
+		},
+	}
+}
+
 // NewCommunicationService creates a new CommunicationService.
 func NewCommunicationService(
 	commRepo *repository.CommunicationRepository,
@@ -156,9 +186,10 @@ func (s *CommunicationService) CreateTemplate(ctx context.Context, tenantID uuid
 	return template, nil
 }
 
-// GenerateDefaultInvitationTemplates ensures both default invitation templates exist for a tenant.
+// GenerateDefaultInvitationTemplates ensures the default invitation and RSVP
+// reminder templates exist for a tenant.
 func (s *CommunicationService) GenerateDefaultInvitationTemplates(ctx context.Context, tenantID uuid.UUID) ([]*domain.CommunicationTemplate, error) {
-	definitions := DefaultInvitationTemplates()
+	definitions := append(DefaultInvitationTemplates(), DefaultRSVPReminderTemplates()...)
 	templates := make([]*domain.CommunicationTemplate, 0, len(definitions))
 	for _, definition := range definitions {
 		existing, err := s.commRepo.GetTemplateByKey(ctx, tenantID, definition.Name, definition.Channel, definition.Type)
@@ -499,39 +530,8 @@ func (s *CommunicationService) SendMessage(ctx context.Context, tenantID, eventI
 			if guest.Phone != nil {
 				phone = *guest.Phone
 			}
-			receipt, sendErr := s.whatsapp.SendFor(ctx, tenantID, phone, renderedBody)
-			if sendErr != nil {
-				failedAt := time.Now().UTC()
-				errorMessage := sendErr.Error()
-				var providerHTTPStatus *int
-				var providerErr *whatsapp.ProviderError
-				if errors.As(sendErr, &providerErr) && providerErr.StatusCode > 0 {
-					providerHTTPStatus = &providerErr.StatusCode
-				}
-				if err := s.commRepo.UpdateMessageStatus(ctx, tenantID, msg.ID, domain.MessageStatusFailed, nil, nil, nil, &failedAt, &errorMessage, nil, providerHTTPStatus, nil); err != nil {
-					return nil, fmt.Errorf("record failed message %s: %w", msg.ID, err)
-				}
-				msg.Status = domain.MessageStatusFailed
-				msg.FailedAt = &failedAt
-				msg.ErrorMessage = &errorMessage
-				msg.ProviderHTTPStatus = providerHTTPStatus
-			} else {
-				sentAt := time.Now().UTC()
-				if receipt.SentAt != nil {
-					sentAt = receipt.SentAt.UTC()
-				}
-				var providerID *string
-				if receipt.ExternalID != "" {
-					providerID = &receipt.ExternalID
-				}
-				providerHTTPStatus := &receipt.HTTPStatus
-				if err := s.commRepo.UpdateMessageStatus(ctx, tenantID, msg.ID, domain.MessageStatusSent, &sentAt, nil, nil, nil, nil, providerID, providerHTTPStatus, nil); err != nil {
-					return nil, fmt.Errorf("update sent message %s: %w", msg.ID, err)
-				}
-				msg.Status = domain.MessageStatusSent
-				msg.SentAt = &sentAt
-				msg.ExternalID = providerID
-				msg.ProviderHTTPStatus = providerHTTPStatus
+			if err := s.dispatchWhatsApp(ctx, tenantID, msg, phone, renderedBody); err != nil {
+				return nil, err
 			}
 		}
 
@@ -539,6 +539,231 @@ func (s *CommunicationService) SendMessage(ctx context.Context, tenantID, eventI
 	}
 
 	return messages, nil
+}
+
+// dispatchWhatsApp sends a rendered body to one recipient and records the
+// provider outcome on the message row. Provider failures are persisted as a
+// failed message and do not return an error; only persistence failures do.
+func (s *CommunicationService) dispatchWhatsApp(ctx context.Context, tenantID uuid.UUID, msg *domain.CommunicationMessage, phone, renderedBody string) error {
+	receipt, sendErr := s.whatsapp.SendFor(ctx, tenantID, phone, renderedBody)
+	if sendErr != nil {
+		failedAt := time.Now().UTC()
+		errorMessage := sendErr.Error()
+		var providerHTTPStatus *int
+		var providerErr *whatsapp.ProviderError
+		if errors.As(sendErr, &providerErr) && providerErr.StatusCode > 0 {
+			providerHTTPStatus = &providerErr.StatusCode
+		}
+		if err := s.commRepo.UpdateMessageStatus(ctx, tenantID, msg.ID, domain.MessageStatusFailed, nil, nil, nil, &failedAt, &errorMessage, nil, providerHTTPStatus, nil); err != nil {
+			return fmt.Errorf("record failed message %s: %w", msg.ID, err)
+		}
+		msg.Status = domain.MessageStatusFailed
+		msg.FailedAt = &failedAt
+		msg.ErrorMessage = &errorMessage
+		msg.ProviderHTTPStatus = providerHTTPStatus
+		return nil
+	}
+
+	sentAt := time.Now().UTC()
+	if receipt.SentAt != nil {
+		sentAt = receipt.SentAt.UTC()
+	}
+	var providerID *string
+	if receipt.ExternalID != "" {
+		providerID = &receipt.ExternalID
+	}
+	providerHTTPStatus := &receipt.HTTPStatus
+	if err := s.commRepo.UpdateMessageStatus(ctx, tenantID, msg.ID, domain.MessageStatusSent, &sentAt, nil, nil, nil, nil, providerID, providerHTTPStatus, nil); err != nil {
+		return fmt.Errorf("update sent message %s: %w", msg.ID, err)
+	}
+	msg.Status = domain.MessageStatusSent
+	msg.SentAt = &sentAt
+	msg.ExternalID = providerID
+	msg.ProviderHTTPStatus = providerHTTPStatus
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// RSVP Reminders
+// ---------------------------------------------------------------------------
+
+// rsvpReminderThrottleWindow prevents the same guest from receiving another
+// reminder within this window unless the caller sets force=true.
+const rsvpReminderThrottleWindow = 24 * time.Hour
+
+// ListRSVPReminderCandidates returns event guests that should receive an RSVP
+// reminder: active roster members with an active invitation and no real response.
+func (s *CommunicationService) ListRSVPReminderCandidates(ctx context.Context, tenantID, eventID uuid.UUID) ([]*domain.RSVPReminderCandidate, error) {
+	if _, err := s.eventRepo.GetByIDForTenant(ctx, eventID, tenantID); err != nil {
+		return nil, fmt.Errorf("get event: %w", err)
+	}
+	candidates, err := s.commRepo.ListRSVPReminderCandidates(ctx, tenantID, eventID)
+	if err != nil {
+		return nil, err
+	}
+	return candidates, nil
+}
+
+// SendRSVPReminders sends a reminder message to no-response event guests.
+// Without template_id it falls back to the default WhatsApp reminder template,
+// creating the tenant defaults first when they are missing.
+func (s *CommunicationService) SendRSVPReminders(ctx context.Context, tenantID, eventID, userID uuid.UUID, req domain.RSVPReminderSendRequest) (*domain.RSVPReminderSendResult, error) {
+	event, err := s.eventRepo.GetByIDForTenant(ctx, eventID, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("get event: %w", err)
+	}
+
+	var template *domain.CommunicationTemplate
+	if req.TemplateID != nil {
+		template, err = s.commRepo.GetTemplate(ctx, tenantID, *req.TemplateID)
+		if err != nil {
+			return nil, fmt.Errorf("get template: %w", err)
+		}
+	} else {
+		template, err = s.commRepo.GetTemplateByKey(ctx, tenantID, DefaultRSVPReminderTemplateWhatsApp, domain.ChannelWhatsApp, domain.MsgTypeRSVPFollowUp)
+		if errors.Is(err, domain.ErrTemplateNotFound) {
+			if _, genErr := s.GenerateDefaultInvitationTemplates(ctx, tenantID); genErr != nil {
+				return nil, fmt.Errorf("provision default reminder templates: %w", genErr)
+			}
+			template, err = s.commRepo.GetTemplateByKey(ctx, tenantID, DefaultRSVPReminderTemplateWhatsApp, domain.ChannelWhatsApp, domain.MsgTypeRSVPFollowUp)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("get default reminder template: %w", err)
+		}
+	}
+	if !template.IsActive {
+		return nil, domain.ErrTemplateInactive
+	}
+
+	candidates, err := s.commRepo.ListRSVPReminderCandidates(ctx, tenantID, eventID)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now().UTC()
+	result := &domain.RSVPReminderSendResult{
+		Messages:        []*domain.CommunicationMessage{},
+		Skipped:         []domain.RSVPReminderSkip{},
+		TotalCandidates: len(candidates),
+	}
+	if event.RSVPDeadline != nil && event.RSVPDeadline.Before(now) {
+		result.DeadlinePassed = true
+	}
+
+	eligible, skipped := filterRSVPReminderCandidates(candidates, req.GuestIDs, req.Force, template.Channel, now)
+	result.Skipped = append(result.Skipped, skipped...)
+	if len(eligible) == 0 {
+		return result, nil
+	}
+
+	if template.Channel == domain.ChannelWhatsApp {
+		if err := s.prepareWhatsApp(ctx, tenantID); err != nil {
+			return nil, err
+		}
+	}
+
+	for _, candidate := range eligible {
+		guest, err := s.guestRepo.GetByIDForTenant(ctx, tenantID, candidate.GuestID)
+		if err != nil {
+			result.Skipped = append(result.Skipped, domain.RSVPReminderSkip{GuestID: candidate.GuestID, FullName: candidate.FullName, Reason: "data kontak tidak ditemukan"})
+			continue
+		}
+		var invitation *domain.Invitation
+		if s.invitationRepo != nil {
+			invitation, _ = s.invitationRepo.GetByEventAndGuest(ctx, eventID, candidate.GuestID)
+		}
+
+		vars := BuildRenderVariables(guest, event, invitation, s.baseURL)
+		renderedBody := RenderTemplate(template.Body, vars)
+
+		msg := &domain.CommunicationMessage{
+			Base: domain.Base{
+				ID:        uuid.New(),
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			TenantID:     tenantID,
+			EventID:      eventID,
+			GuestID:      candidate.GuestID,
+			EventGuestID: &candidate.EventGuestID,
+			InvitationID: &candidate.InvitationID,
+			Channel:      template.Channel,
+			Type:         domain.MsgTypeRSVPFollowUp,
+			Body:         renderedBody,
+			Status:       domain.MessageStatusQueued,
+		}
+		if template.Subject != nil {
+			subject := RenderTemplate(*template.Subject, vars)
+			msg.Subject = &subject
+		}
+
+		if err := s.commRepo.CreateMessage(ctx, msg); err != nil {
+			return nil, fmt.Errorf("create reminder message for guest %s: %w", candidate.GuestID, err)
+		}
+
+		if template.Channel == domain.ChannelWhatsApp {
+			phone := ""
+			if guest.Phone != nil {
+				phone = *guest.Phone
+			}
+			if err := s.dispatchWhatsApp(ctx, tenantID, msg, phone, renderedBody); err != nil {
+				return nil, err
+			}
+		}
+
+		result.Messages = append(result.Messages, msg)
+	}
+
+	return result, nil
+}
+
+// filterRSVPReminderCandidates applies the requested subset, the anti-spam
+// throttle window, and per-channel contact requirements to a candidate list.
+func filterRSVPReminderCandidates(candidates []*domain.RSVPReminderCandidate, guestIDs []uuid.UUID, force bool, channel string, now time.Time) ([]*domain.RSVPReminderCandidate, []domain.RSVPReminderSkip) {
+	requested := make(map[uuid.UUID]bool, len(guestIDs))
+	for _, id := range guestIDs {
+		requested[id] = true
+	}
+
+	known := make(map[uuid.UUID]bool, len(candidates))
+	var eligible []*domain.RSVPReminderCandidate
+	var skipped []domain.RSVPReminderSkip
+
+	for _, candidate := range candidates {
+		known[candidate.GuestID] = true
+		if len(guestIDs) > 0 && !requested[candidate.GuestID] {
+			continue
+		}
+		if !force && candidate.LastReminderAt != nil && now.Sub(*candidate.LastReminderAt) < rsvpReminderThrottleWindow {
+			skipped = append(skipped, domain.RSVPReminderSkip{GuestID: candidate.GuestID, FullName: candidate.FullName, Reason: "sudah menerima pengingat dalam 24 jam terakhir"})
+			continue
+		}
+		switch channel {
+		case domain.ChannelWhatsApp:
+			phone := ""
+			if candidate.Phone != nil {
+				phone = *candidate.Phone
+			}
+			if _, err := whatsapp.NormalizePhone(phone); err != nil {
+				skipped = append(skipped, domain.RSVPReminderSkip{GuestID: candidate.GuestID, FullName: candidate.FullName, Reason: "nomor WhatsApp kosong atau tidak valid"})
+				continue
+			}
+		case domain.ChannelEmail:
+			if candidate.Email == nil || strings.TrimSpace(*candidate.Email) == "" {
+				skipped = append(skipped, domain.RSVPReminderSkip{GuestID: candidate.GuestID, FullName: candidate.FullName, Reason: "alamat email kosong"})
+				continue
+			}
+		}
+		eligible = append(eligible, candidate)
+	}
+
+	for _, id := range guestIDs {
+		if !known[id] {
+			skipped = append(skipped, domain.RSVPReminderSkip{GuestID: id, Reason: "bukan kandidat pengingat (sudah merespons, tidak di roster, atau tanpa undangan aktif)"})
+		}
+	}
+
+	return eligible, skipped
 }
 
 // ListMessages lists messages for an event with optional filters.

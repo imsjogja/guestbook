@@ -165,6 +165,8 @@ func RegisterRoutes(
 	rsvps.GET("/dashboard", rsvpHandler.Dashboard, rsvpRead)
 	rsvps.PATCH("/:rsvpId", rsvpHandler.UpdateByOfficer, rsvpWrite)
 	rsvps.POST("/by-guest/:guestId", rsvpHandler.UpsertByGuest, rsvpWrite)
+	rsvps.GET("/reminders/candidates", communicationHandler.ListRSVPReminderCandidates, communicationRead)
+	rsvps.POST("/reminders", communicationHandler.SendRSVPReminders, communicationSend)
 
 	// Check-in routes (protected, tenant-scoped, nested under events).
 	checkins := events.Group("/:eventId/checkin")

@@ -298,6 +298,8 @@ OpenAPI 3.0 specification available at `docs/api/openapi.yaml`.
 | `POST` | `/api/v1/tenants/:id/events/:eventId/campaigns/:campaignId/launch` | Send a campaign to filtered guests |
 | `POST` | `/api/v1/rsvp` | Submit RSVP (public) |
 | `GET`  | `/api/v1/tenants/:id/events/:eventId/rsvp/dashboard` | RSVP dashboard |
+| `GET`  | `/api/v1/tenants/:id/events/:eventId/rsvp/reminders/candidates` | List no-response guests eligible for an RSVP reminder |
+| `POST` | `/api/v1/tenants/:id/events/:eventId/rsvp/reminders` | Send RSVP reminders to no-response guests |
 | `POST` | `/api/v1/tenants/:id/events/:eventId/checkin` | Process check-in |
 | `GET`  | `/api/v1/tenants/:id/events/:eventId/checkin/stats` | Check-in stats |
 | `POST` | `/api/v1/tenants/:id/events/:eventId/checkin/walkin` | Walk-in registration |
@@ -328,6 +330,30 @@ Every new tenant is automatically provisioned with the standard WhatsApp and ema
 Before a batch is sent, the API verifies that every guest belongs to the selected event and has a valid WhatsApp number. An empty or invalid number returns `422` and no message in that batch is sent. Provider credentials that are missing or disabled return `503`.
 
 WhatsApp credentials can be managed from **Pengaturan > Integrasi**. The UI never receives token values back; tenant overrides are encrypted at rest using `JWT_SECRET` as the key derivation input. Saving the form applies the new credentials immediately to the running service. After a restart, the backend resolves the encrypted tenant configuration on the first send, so no container restart is required for normal changes. `WHATSAPP_ACCOUNT_TOKEN` and `WHATSAPP_SENDER_TOKEN` remain the environment fallback for tenants without an override.
+
+### RSVP Reminder Flow
+
+Reminder candidates are active event guests that hold an active invitation (`draft`, `sent`, or `opened`) and have not given a real RSVP response yet (no row, or a `not_sent`/`pending`/`no_response` row). Guests who answered `attending`, `not_attending`, or `maybe` are never reminded.
+
+```json
+POST /api/v1/tenants/:id/events/:eventId/rsvp/reminders
+{
+  "template_id": "OPTIONAL_TEMPLATE_UUID",
+  "guest_ids": ["OPTIONAL_GUEST_UUID"],
+  "force": false
+}
+```
+
+Rules:
+
+- Without `template_id`, the system template **Pengingat RSVP WhatsApp** is used; tenant defaults are provisioned automatically when missing. Every tenant also receives **Pengingat RSVP Email** (both are `rsvp_followup` templates, seeded by migration `1009`).
+- Empty `guest_ids` targets every candidate; listed IDs that are not candidates are reported back under `skipped` with a reason instead of failing the batch.
+- A guest who already received a reminder in the last 24 hours is skipped unless `force` is `true`.
+- Guests without a usable contact for the template channel (invalid WhatsApp number, empty email) are skipped with a reason; the rest of the batch still goes out.
+- Reminder sends reuse the same delivery pipeline as invitations: each attempt is logged in `communication_messages` with type `rsvp_followup`, so delivery status and the 24-hour throttle stay accurate.
+- The response reports `messages`, `skipped`, `total_candidates`, and `deadline_passed` (true when the event's RSVP deadline is already over, as a UI warning).
+
+`GET .../rsvp/reminders/candidates` returns the same population with `last_reminder_at` and `reminder_count` per guest so officers can preview who will be contacted.
 
 ---
 
@@ -623,6 +649,7 @@ Target: **Level 2** (Application handling sensitive data)
 
 ### Phase 2 (Planned)
 - [x] Blastr WhatsApp delivery integration with per-guest and batch actions
+- [x] RSVP reminder flow (manual trigger, 24h throttle, no-response targeting)
 - [ ] Automated reminder scheduling
 - [ ] Offline-first PWA check-in scanner
 - [ ] Thermal label printing

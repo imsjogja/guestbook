@@ -152,6 +152,43 @@ type CommunicationCampaignCreateRequest struct {
 	ScheduledAt     *time.Time `json:"scheduled_at,omitempty"`
 }
 
+// RSVPReminderCandidate is an active event guest without a real RSVP response
+// who still holds an active invitation credential.
+type RSVPReminderCandidate struct {
+	EventGuestID     uuid.UUID  `db:"event_guest_id" json:"event_guest_id"`
+	GuestID          uuid.UUID  `db:"guest_id" json:"guest_id"`
+	FullName         string     `db:"full_name" json:"full_name"`
+	Phone            *string    `db:"phone" json:"phone,omitempty"`
+	Email            *string    `db:"email" json:"email,omitempty"`
+	InvitationID     uuid.UUID  `db:"invitation_id" json:"invitation_id"`
+	InvitationStatus string     `db:"invitation_status" json:"invitation_status"`
+	LastReminderAt   *time.Time `db:"last_reminder_at" json:"last_reminder_at,omitempty"`
+	ReminderCount    int        `db:"reminder_count" json:"reminder_count"`
+}
+
+// RSVPReminderSendRequest triggers reminder messages for no-response event guests.
+// GuestIDs narrows the target to a subset of candidates; empty means all candidates.
+type RSVPReminderSendRequest struct {
+	TemplateID *uuid.UUID  `json:"template_id,omitempty"`
+	GuestIDs   []uuid.UUID `json:"guest_ids,omitempty"`
+	Force      bool        `json:"force,omitempty"`
+}
+
+// RSVPReminderSkip explains why a guest was excluded from a reminder batch.
+type RSVPReminderSkip struct {
+	GuestID  uuid.UUID `json:"guest_id"`
+	FullName string    `json:"full_name"`
+	Reason   string    `json:"reason"`
+}
+
+// RSVPReminderSendResult summarizes one reminder batch.
+type RSVPReminderSendResult struct {
+	Messages        []*CommunicationMessage `json:"messages"`
+	Skipped         []RSVPReminderSkip      `json:"skipped"`
+	TotalCandidates int                     `json:"total_candidates"`
+	DeadlinePassed  bool                    `json:"deadline_passed"`
+}
+
 // MessageStatusUpdate for updating message status from provider webhooks
 type MessageStatusUpdate struct {
 	Status       string     `json:"status" validate:"required"`

@@ -458,3 +458,77 @@ func (h *CommunicationHandler) CancelCampaign(c echo.Context) error {
 
 	return appresponse.Success(c, map[string]string{"status": "cancelled"})
 }
+
+// ---------------------------------------------------------------------------
+// RSVP Reminders
+// ---------------------------------------------------------------------------
+
+// ListRSVPReminderCandidates handles GET /api/v1/tenants/:id/events/:eventId/rsvp/reminders/candidates.
+// It lists active event guests holding an active invitation without a real RSVP response.
+func (h *CommunicationHandler) ListRSVPReminderCandidates(c echo.Context) error {
+	tenantID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return appresponse.BadRequest(c, "Invalid tenant ID")
+	}
+
+	eventID, err := uuid.Parse(c.Param("eventId"))
+	if err != nil {
+		return appresponse.BadRequest(c, "Invalid event ID")
+	}
+
+	candidates, err := h.commService.ListRSVPReminderCandidates(c.Request().Context(), tenantID, eventID)
+	if err != nil {
+		if stderrors.Is(err, domain.ErrNotFound) || stderrors.Is(err, domain.ErrEventNotFound) {
+			return appresponse.NotFound(c, "Event")
+		}
+		return appresponse.InternalError(c, "Failed to list reminder candidates")
+	}
+
+	return appresponse.Success(c, map[string]interface{}{
+		"candidates": candidates,
+		"total":      len(candidates),
+	})
+}
+
+// SendRSVPReminders handles POST /api/v1/tenants/:id/events/:eventId/rsvp/reminders.
+// It sends a reminder to no-response guests, throttled to one reminder per 24 hours
+// unless force is set.
+func (h *CommunicationHandler) SendRSVPReminders(c echo.Context) error {
+	tenantID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return appresponse.BadRequest(c, "Invalid tenant ID")
+	}
+
+	eventID, err := uuid.Parse(c.Param("eventId"))
+	if err != nil {
+		return appresponse.BadRequest(c, "Invalid event ID")
+	}
+
+	var req domain.RSVPReminderSendRequest
+	if err := c.Bind(&req); err != nil {
+		return appresponse.BadRequest(c, "Invalid request body")
+	}
+
+	userID, err := getUserIDFromEchoContext(c)
+	if err != nil {
+		return appresponse.Unauthorized(c, "Authentication required")
+	}
+
+	result, err := h.commService.SendRSVPReminders(c.Request().Context(), tenantID, eventID, userID, req)
+	if err != nil {
+		switch {
+		case stderrors.Is(err, domain.ErrTemplateNotFound):
+			return appresponse.NotFound(c, "Template")
+		case stderrors.Is(err, domain.ErrTemplateInactive):
+			return appresponse.Conflict(c, "Template is inactive")
+		case stderrors.Is(err, domain.ErrNotFound), stderrors.Is(err, domain.ErrEventNotFound):
+			return appresponse.NotFound(c, "Event")
+		case stderrors.Is(err, whatsapp.ErrNotConfigured):
+			return appresponse.ServiceUnavailable(c, "WhatsApp belum dikonfigurasi")
+		default:
+			return appresponse.InternalError(c, "Failed to send RSVP reminders")
+		}
+	}
+
+	return appresponse.Success(c, result)
+}

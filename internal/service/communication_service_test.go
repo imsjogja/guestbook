@@ -63,3 +63,106 @@ func TestBuildRenderVariablesNormalizesLegacyInvitationURL(t *testing.T) {
 		t.Fatalf("rsvp_link = %q, want %q", got, want)
 	}
 }
+
+func TestDefaultRSVPReminderTemplates(t *testing.T) {
+	templates := DefaultRSVPReminderTemplates()
+	if len(templates) != 2 {
+		t.Fatalf("default reminder template count = %d, want 2", len(templates))
+	}
+
+	seenChannels := make(map[string]bool)
+	for _, template := range templates {
+		seenChannels[template.Channel] = true
+		if template.Type != domain.MsgTypeRSVPFollowUp {
+			t.Errorf("template %q type = %q, want rsvp_followup", template.Name, template.Type)
+		}
+		if template.Body == "" || len(template.Variables) == 0 {
+			t.Errorf("template %q must have body and variables", template.Name)
+		}
+		for _, variable := range template.Variables {
+			if !strings.Contains(template.Body+template.Subject, "{{"+variable+"}}") {
+				t.Errorf("template %q does not use variable %q", template.Name, variable)
+			}
+		}
+	}
+	if !seenChannels[domain.ChannelWhatsApp] || !seenChannels[domain.ChannelEmail] {
+		t.Fatalf("default reminder templates must include WhatsApp and email: %#v", seenChannels)
+	}
+}
+
+func TestFilterRSVPReminderCandidatesThrottleAndForce(t *testing.T) {
+	now := time.Now().UTC()
+	recent := now.Add(-2 * time.Hour)
+	old := now.Add(-48 * time.Hour)
+	phone := "081234567890"
+
+	candidates := []*domain.RSVPReminderCandidate{
+		{GuestID: uuid.New(), FullName: "Baru Diingatkan", Phone: &phone, LastReminderAt: &recent},
+		{GuestID: uuid.New(), FullName: "Lama Diingatkan", Phone: &phone, LastReminderAt: &old},
+		{GuestID: uuid.New(), FullName: "Belum Pernah", Phone: &phone},
+	}
+
+	eligible, skipped := filterRSVPReminderCandidates(candidates, nil, false, domain.ChannelWhatsApp, now)
+	if len(eligible) != 2 {
+		t.Fatalf("eligible = %d, want 2 (throttled guest excluded)", len(eligible))
+	}
+	if len(skipped) != 1 || skipped[0].FullName != "Baru Diingatkan" {
+		t.Fatalf("skipped = %#v, want the recently reminded guest", skipped)
+	}
+
+	eligible, skipped = filterRSVPReminderCandidates(candidates, nil, true, domain.ChannelWhatsApp, now)
+	if len(eligible) != 3 || len(skipped) != 0 {
+		t.Fatalf("force should include all candidates, got eligible=%d skipped=%d", len(eligible), len(skipped))
+	}
+}
+
+func TestFilterRSVPReminderCandidatesChannelRequirements(t *testing.T) {
+	now := time.Now().UTC()
+	phone := "081234567890"
+	badPhone := "12345"
+	email := "tamu@example.com"
+	empty := "   "
+
+	candidates := []*domain.RSVPReminderCandidate{
+		{GuestID: uuid.New(), FullName: "Punya Nomor", Phone: &phone, Email: &email},
+		{GuestID: uuid.New(), FullName: "Nomor Salah", Phone: &badPhone, Email: &email},
+		{GuestID: uuid.New(), FullName: "Tanpa Kontak", Email: &empty},
+	}
+
+	eligible, skipped := filterRSVPReminderCandidates(candidates, nil, false, domain.ChannelWhatsApp, now)
+	if len(eligible) != 1 || eligible[0].FullName != "Punya Nomor" {
+		t.Fatalf("whatsapp eligible = %#v, want only guest with valid phone", eligible)
+	}
+	if len(skipped) != 2 {
+		t.Fatalf("whatsapp skipped = %d, want 2", len(skipped))
+	}
+
+	eligible, skipped = filterRSVPReminderCandidates(candidates, nil, false, domain.ChannelEmail, now)
+	if len(eligible) != 2 {
+		t.Fatalf("email eligible = %d, want 2", len(eligible))
+	}
+	if len(skipped) != 1 || skipped[0].FullName != "Tanpa Kontak" {
+		t.Fatalf("email skipped = %#v, want guest without email", skipped)
+	}
+}
+
+func TestFilterRSVPReminderCandidatesSubsetSelection(t *testing.T) {
+	now := time.Now().UTC()
+	phone := "081234567890"
+	inRoster := uuid.New()
+	other := uuid.New()
+	notCandidate := uuid.New()
+
+	candidates := []*domain.RSVPReminderCandidate{
+		{GuestID: inRoster, FullName: "Dipilih", Phone: &phone},
+		{GuestID: other, FullName: "Tidak Dipilih", Phone: &phone},
+	}
+
+	eligible, skipped := filterRSVPReminderCandidates(candidates, []uuid.UUID{inRoster, notCandidate}, false, domain.ChannelWhatsApp, now)
+	if len(eligible) != 1 || eligible[0].GuestID != inRoster {
+		t.Fatalf("eligible = %#v, want only the requested candidate", eligible)
+	}
+	if len(skipped) != 1 || skipped[0].GuestID != notCandidate {
+		t.Fatalf("skipped = %#v, want the requested non-candidate", skipped)
+	}
+}

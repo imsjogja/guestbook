@@ -684,3 +684,59 @@ func (r *CommunicationRepository) GetRecentMessages(ctx context.Context, tenantI
 	}
 	return messages, nil
 }
+
+// ListRSVPReminderCandidates returns active event guests that still hold an
+// active invitation credential but have not given a real RSVP response yet.
+// Rows include the latest successful reminder so callers can throttle repeats.
+func (r *CommunicationRepository) ListRSVPReminderCandidates(ctx context.Context, tenantID, eventID uuid.UUID) ([]*domain.RSVPReminderCandidate, error) {
+	query := `
+		SELECT
+			eg.id                          AS event_guest_id,
+			eg.guest_id                    AS guest_id,
+			g.full_name                    AS full_name,
+			g.phone                        AS phone,
+			g.email                        AS email,
+			i.id                           AS invitation_id,
+			i.status                       AS invitation_status,
+			lr.last_reminder_at            AS last_reminder_at,
+			COALESCE(lr.reminder_count, 0) AS reminder_count
+		FROM event_guests eg
+		JOIN guests g
+		  ON g.id = eg.guest_id AND g.deleted_at IS NULL
+		JOIN LATERAL (
+			SELECT inv.id, inv.status
+			FROM invitations inv
+			WHERE inv.event_id = eg.event_id
+			  AND inv.guest_id = eg.guest_id
+			  AND inv.deleted_at IS NULL
+			  AND inv.status NOT IN ('expired', 'revoked')
+			ORDER BY inv.created_at DESC
+			LIMIT 1
+		) i ON TRUE
+		LEFT JOIN LATERAL (
+			SELECT MAX(cm.created_at) AS last_reminder_at, COUNT(*) AS reminder_count
+			FROM communication_messages cm
+			WHERE cm.tenant_id = eg.tenant_id
+			  AND cm.event_id = eg.event_id
+			  AND cm.guest_id = eg.guest_id
+			  AND cm.type = $3
+			  AND cm.status NOT IN ('failed', 'cancelled')
+		) lr ON TRUE
+		WHERE eg.tenant_id = $1 AND eg.event_id = $2
+		  AND eg.status = 'active' AND eg.deleted_at IS NULL
+		  AND NOT EXISTS (
+			SELECT 1 FROM rsvp_responses rr
+			WHERE rr.tenant_id = eg.tenant_id
+			  AND rr.event_id = eg.event_id
+			  AND rr.guest_id = eg.guest_id
+			  AND rr.status NOT IN ('not_sent', 'pending', 'no_response')
+		  )
+		ORDER BY g.full_name ASC
+	`
+	var candidates []*domain.RSVPReminderCandidate
+	err := r.db.SelectContext(ctx, &candidates, query, tenantID, eventID, domain.MsgTypeRSVPFollowUp)
+	if err != nil {
+		return nil, fmt.Errorf("list rsvp reminder candidates: %w", err)
+	}
+	return candidates, nil
+}
