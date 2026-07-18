@@ -16,11 +16,4 @@ guestflow.id, www.guestflow.id {
 		X-Frame-Options "SAMEORIGIN"
 		Referrer-Policy "strict-origin-when-cross-origin"
 	}
-
-	log {
-		output file /var/log/caddy/guestflow-access.log {
-			roll_size 10MB
-			roll_keep 10
-		}
-	}
 }
