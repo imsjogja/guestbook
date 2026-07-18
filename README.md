@@ -37,7 +37,7 @@ A comprehensive SaaS platform for managing guest invitations, RSVPs, check-ins, 
 |--------|--------|-------------|
 | **Authentication** | ✅ | JWT with refresh token rotation, bcrypt hashing, MFA-ready |
 | **Multi-Tenancy** | ✅ | Tenant isolation via PostgreSQL RLS, organization management |
-| **RBAC** | ✅ | 7 roles, 30 permissions — from Tenant Owner to Viewer |
+| **RBAC** | ✅ | 7 roles, 32 permissions — tenant and event-scoped access |
 | **Audit Logging** | ✅ | Comprehensive mutation tracking for compliance |
 | **Event Management** | ✅ | CRUD, multi-session (Akad, Resepsi, etc.), status workflow |
 | **Guest Management** | ✅ | CRUD, household grouping, tags, CSV import/export, duplicate detection |
@@ -195,7 +195,30 @@ These accounts are for local/demo testing only and must not be used in productio
 The original workspace account remains available as `demo@guestflow.id` with the
 same password. Its tenant membership is `Tenant Owner`.
 
-The role is assigned at tenant membership level. To inspect demo memberships:
+Tenant membership determines who can access the workspace. Operational roles can
+then be assigned to individual events through `event_members`.
+
+### Role Scope
+
+- `tenant_owner`: full access across the tenant and all events.
+- `event_manager`: manages events and event staff across the tenant, without changing tenant membership roles.
+- `rsvp_officer`: event-scoped access for invitations, RSVP, and communication.
+- `registration_officer`: event-scoped access for guest registration and check-in.
+- `usher`: event-scoped access for check-in and seating visibility.
+- `gift_officer`: event-scoped read access for guest and event reporting.
+- `viewer`: event-scoped read-only access; can view event assignments when assigned.
+
+Existing event-scoped memberships are backfilled during migration `1001_event_members`.
+New event-scoped users must be assigned from **Tim Acara** in the UI before they can
+open that event. The API exposes the effective role through:
+
+```text
+GET /api/v1/tenants/:tenantId/events/:eventId/members/access
+GET /api/v1/tenants/:tenantId/events/:eventId/members
+POST /api/v1/tenants/:tenantId/events/:eventId/members
+```
+
+To inspect demo tenant memberships:
 
 ```bash
 curl http://localhost:8080/api/v1/tenants/TENANT_ID/users \
@@ -241,6 +264,9 @@ OpenAPI 3.0 specification available at `docs/api/openapi.yaml`.
 | `GET`  | `/api/v1/tenants/:id` | Get tenant |
 | `GET`  | `/api/v1/tenants/:id/events` | List events |
 | `POST` | `/api/v1/tenants/:id/events` | Create event |
+| `GET`  | `/api/v1/tenants/:id/events/:eventId/members/access` | Get effective event access |
+| `GET`  | `/api/v1/tenants/:id/events/:eventId/members` | List assigned event staff |
+| `POST` | `/api/v1/tenants/:id/events/:eventId/members` | Assign staff to an event |
 | `GET`  | `/api/v1/tenants/:id/guests` | List guests |
 | `POST` | `/api/v1/tenants/:id/guests` | Create guest |
 | `POST` | `/api/v1/tenants/:id/guests/import` | Import CSV |

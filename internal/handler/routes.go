@@ -2,8 +2,10 @@ package handler
 
 import (
 	"guestflow/internal/auth"
+	"guestflow/internal/domain"
 	"guestflow/internal/middleware"
 	"guestflow/internal/rbac"
+	"guestflow/internal/service"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
@@ -15,6 +17,7 @@ func RegisterRoutes(
 	authHandler *AuthHandler,
 	tenantHandler *TenantHandler,
 	eventHandler *EventHandler,
+	eventMemberHandler *EventMemberHandler,
 	guestHandler *GuestHandler,
 	eventGuestHandler *EventGuestHandler,
 	householdHandler *HouseholdHandler,
@@ -28,6 +31,7 @@ func RegisterRoutes(
 	htmxDashboardHandler *HTMXDashboardHandler,
 	jwtService *auth.JWTService,
 	rbacService *rbac.Service,
+	eventAccessService *service.EventAccessService,
 	db *sqlx.DB,
 ) {
 	// Public API group.
@@ -52,14 +56,19 @@ func RegisterRoutes(
 
 	// Tenant routes (protected).
 	tenants := protected.Group("/tenants")
+	tenantEventRead := middleware.RequirePermission(rbacService, domain.PermEventRead)
+	tenantEventWrite := middleware.RequirePermission(rbacService, domain.PermEventWrite)
+	tenantTeamRead := middleware.RequirePermission(rbacService, domain.PermTeamRead)
+	tenantTeamWrite := middleware.RequirePermission(rbacService, domain.PermTeamWrite)
+	tenantTeamInvite := middleware.RequirePermission(rbacService, domain.PermTeamInvite)
 	tenants.POST("", tenantHandler.Create)
 	tenants.GET("", tenantHandler.List)
 	tenants.GET("/:id", tenantHandler.Get)
 	tenants.PATCH("/:id", tenantHandler.Update)
-	tenants.GET("/:id/users", tenantHandler.ListUsers)
-	tenants.POST("/:id/users/invite", tenantHandler.InviteUser)
-	tenants.DELETE("/:id/users/:userId", tenantHandler.RemoveUser)
-	tenants.PATCH("/:id/users/:userId/role", tenantHandler.UpdateUserRole)
+	tenants.GET("/:id/users", tenantHandler.ListUsers, tenantTeamRead)
+	tenants.POST("/:id/users/invite", tenantHandler.InviteUser, tenantTeamInvite)
+	tenants.DELETE("/:id/users/:userId", tenantHandler.RemoveUser, tenantTeamWrite)
+	tenants.PATCH("/:id/users/:userId/role", tenantHandler.UpdateUserRole, tenantTeamWrite)
 
 	// Guest routes (protected, tenant-scoped).
 	// Tenants :id is the tenant ID; guest endpoints are nested under it.
@@ -86,64 +95,92 @@ func RegisterRoutes(
 
 	// Event routes (protected, tenant-scoped).
 	events := tenants.Group("/:id/events")
-	events.POST("", eventHandler.Create)
-	events.GET("", eventHandler.List)
-	events.GET("/:eventId", eventHandler.Get)
-	events.PATCH("/:eventId", eventHandler.Update)
-	events.DELETE("/:eventId", eventHandler.Delete)
-	events.POST("/:eventId/publish", eventHandler.Publish)
+	events.POST("", eventHandler.Create, tenantEventWrite)
+	events.GET("", eventHandler.List, tenantEventRead)
+	eventRead := middleware.RequireEventPermission(eventAccessService, domain.PermEventRead)
+	eventWrite := middleware.RequireEventPermission(eventAccessService, domain.PermEventWrite)
+	eventDelete := middleware.RequireEventPermission(eventAccessService, domain.PermEventDelete)
+	guestRead := middleware.RequireEventPermission(eventAccessService, domain.PermGuestRead)
+	guestWrite := middleware.RequireEventPermission(eventAccessService, domain.PermGuestWrite)
+	guestDelete := middleware.RequireEventPermission(eventAccessService, domain.PermGuestDelete)
+	invitationRead := middleware.RequireEventPermission(eventAccessService, domain.PermInvitationRead)
+	invitationWrite := middleware.RequireEventPermission(eventAccessService, domain.PermInvitationWrite)
+	rsvpRead := middleware.RequireEventPermission(eventAccessService, domain.PermRSVPRead)
+	rsvpWrite := middleware.RequireEventPermission(eventAccessService, domain.PermRSVPWrite)
+	checkinRead := middleware.RequireEventPermission(eventAccessService, domain.PermCheckinRead)
+	checkinWrite := middleware.RequireEventPermission(eventAccessService, domain.PermCheckinWrite)
+	seatingRead := middleware.RequireEventPermission(eventAccessService, domain.PermSeatingRead)
+	seatingWrite := middleware.RequireEventPermission(eventAccessService, domain.PermSeatingWrite)
+	communicationRead := middleware.RequireEventPermission(eventAccessService, domain.PermCommunicationRead)
+	communicationWrite := middleware.RequireEventPermission(eventAccessService, domain.PermCommunicationWrite)
+	communicationSend := middleware.RequireEventPermission(eventAccessService, domain.PermCommunicationSend)
+	reportRead := middleware.RequireEventPermission(eventAccessService, domain.PermReportRead)
+	eventTeamRead := middleware.RequireEventPermission(eventAccessService, domain.PermEventTeamRead)
+	eventTeamWrite := middleware.RequireEventPermission(eventAccessService, domain.PermEventTeamWrite)
+	events.GET("/:eventId", eventHandler.Get, eventRead)
+	events.PATCH("/:eventId", eventHandler.Update, eventWrite)
+	events.DELETE("/:eventId", eventHandler.Delete, eventDelete)
+	events.POST("/:eventId/publish", eventHandler.Publish, eventWrite)
+
+	// Event staff assignment routes.
+	eventMembers := events.Group("/:eventId/members")
+	eventMembers.GET("", eventMemberHandler.List, eventTeamRead)
+	eventMembers.GET("/access", eventMemberHandler.Access, eventRead)
+	eventMembers.POST("", eventMemberHandler.Create, eventTeamWrite)
+	eventMembers.PATCH("/:userId", eventMemberHandler.UpdateRole, eventTeamWrite)
+	eventMembers.DELETE("/:userId", eventMemberHandler.Delete, eventTeamWrite)
 
 	// Event guest roster routes. These are intentionally separate from the
 	// tenant guest master so every operational flow can use event scope.
 	eventGuests := events.Group("/:eventId/guests")
-	eventGuests.POST("", eventGuestHandler.Create)
-	eventGuests.GET("", eventGuestHandler.List)
-	eventGuests.POST("/import", eventGuestHandler.ImportCSV)
-	eventGuests.DELETE("/:eventGuestId", eventGuestHandler.Cancel)
+	eventGuests.POST("", eventGuestHandler.Create, guestWrite)
+	eventGuests.GET("", eventGuestHandler.List, guestRead)
+	eventGuests.POST("/import", eventGuestHandler.ImportCSV, guestWrite)
+	eventGuests.DELETE("/:eventGuestId", eventGuestHandler.Cancel, guestDelete)
 
 	// Invitation routes (protected, tenant-scoped, nested under events).
 	invitations := events.Group("/:eventId/invitations")
-	invitations.POST("", invitationHandler.Create)
-	invitations.GET("", invitationHandler.List)
-	invitations.POST("/batch", invitationHandler.BatchCreate)
-	invitations.GET("/:invitationId", invitationHandler.Get)
-	invitations.DELETE("/:invitationId", invitationHandler.Delete)
-	invitations.GET("/:invitationId/qr", invitationHandler.GetQRData)
+	invitations.POST("", invitationHandler.Create, invitationWrite)
+	invitations.GET("", invitationHandler.List, invitationRead)
+	invitations.POST("/batch", invitationHandler.BatchCreate, invitationWrite)
+	invitations.GET("/:invitationId", invitationHandler.Get, invitationRead)
+	invitations.DELETE("/:invitationId", invitationHandler.Delete, invitationWrite)
+	invitations.GET("/:invitationId/qr", invitationHandler.GetQRData, invitationRead)
 
 	// RSVP routes (protected, tenant-scoped, nested under events).
 	rsvps := events.Group("/:eventId/rsvp")
-	rsvps.GET("", rsvpHandler.List)
-	rsvps.GET("/dashboard", rsvpHandler.Dashboard)
-	rsvps.PATCH("/:rsvpId", rsvpHandler.UpdateByOfficer)
-	rsvps.POST("/by-guest/:guestId", rsvpHandler.UpsertByGuest)
+	rsvps.GET("", rsvpHandler.List, rsvpRead)
+	rsvps.GET("/dashboard", rsvpHandler.Dashboard, rsvpRead)
+	rsvps.PATCH("/:rsvpId", rsvpHandler.UpdateByOfficer, rsvpWrite)
+	rsvps.POST("/by-guest/:guestId", rsvpHandler.UpsertByGuest, rsvpWrite)
 
 	// Check-in routes (protected, tenant-scoped, nested under events).
 	checkins := events.Group("/:eventId/checkin")
-	checkins.POST("", checkinHandler.Checkin)
-	checkins.GET("/stats", checkinHandler.GetStats)
-	checkins.GET("/search", checkinHandler.SearchGuests)
-	checkins.GET("/recent", checkinHandler.GetRecent)
-	checkins.POST("/walkin", checkinHandler.Walkin)
+	checkins.POST("", checkinHandler.Checkin, checkinWrite)
+	checkins.GET("/stats", checkinHandler.GetStats, checkinRead)
+	checkins.GET("/search", checkinHandler.SearchGuests, checkinRead)
+	checkins.GET("/recent", checkinHandler.GetRecent, checkinRead)
+	checkins.POST("/walkin", checkinHandler.Walkin, checkinWrite)
 
 	// Seating / Table routes (protected, tenant-scoped, nested under events).
 	tables := events.Group("/:eventId/tables")
-	tables.POST("", seatingHandler.CreateTable)
-	tables.GET("", seatingHandler.ListTables)
-	tables.GET("/:tableId", seatingHandler.GetTable)
-	tables.PATCH("/:tableId", seatingHandler.UpdateTable)
-	tables.DELETE("/:tableId", seatingHandler.DeleteTable)
-	tables.POST("/:tableId/assign", seatingHandler.AssignGuest)
-	tables.DELETE("/:tableId/assign/:guestId", seatingHandler.UnassignGuest)
+	tables.POST("", seatingHandler.CreateTable, seatingWrite)
+	tables.GET("", seatingHandler.ListTables, seatingRead)
+	tables.GET("/:tableId", seatingHandler.GetTable, seatingRead)
+	tables.PATCH("/:tableId", seatingHandler.UpdateTable, seatingWrite)
+	tables.DELETE("/:tableId", seatingHandler.DeleteTable, seatingWrite)
+	tables.POST("/:tableId/assign", seatingHandler.AssignGuest, seatingWrite)
+	tables.DELETE("/:tableId/assign/:guestId", seatingHandler.UnassignGuest, seatingWrite)
 
 	// Seating zone routes (protected, tenant-scoped, nested under events).
 	zones := events.Group("/:eventId/zones")
-	zones.POST("", seatingHandler.CreateZone)
-	zones.GET("", seatingHandler.ListZones)
+	zones.POST("", seatingHandler.CreateZone, seatingWrite)
+	zones.GET("", seatingHandler.ListZones, seatingRead)
 
 	// Seating layout route (protected, tenant-scoped, nested under events).
 	seating := events.Group("/:eventId/seating")
-	seating.GET("/layout", seatingHandler.GetLayout)
-	seating.POST("/auto-assign", seatingHandler.AutoAssign)
+	seating.GET("/layout", seatingHandler.GetLayout, seatingRead)
+	seating.POST("/auto-assign", seatingHandler.AutoAssign, seatingWrite)
 
 	// Communication template routes (protected, tenant-scoped).
 	templates := tenants.Group("/:id/templates")
@@ -155,20 +192,20 @@ func RegisterRoutes(
 
 	// Communication message routes (protected, tenant-scoped, nested under events).
 	messages := events.Group("/:eventId/messages")
-	messages.POST("/send", communicationHandler.SendMessage)
-	messages.GET("", communicationHandler.ListMessages)
+	messages.POST("/send", communicationHandler.SendMessage, communicationSend)
+	messages.GET("", communicationHandler.ListMessages, communicationRead)
 
 	// Communication campaign routes (protected, tenant-scoped, nested under events).
 	campaigns := events.Group("/:eventId/campaigns")
-	campaigns.POST("", communicationHandler.CreateCampaign)
-	campaigns.GET("", communicationHandler.ListCampaigns)
-	campaigns.POST("/:campaignId/launch", communicationHandler.LaunchCampaign)
-	campaigns.POST("/:campaignId/cancel", communicationHandler.CancelCampaign)
+	campaigns.POST("", communicationHandler.CreateCampaign, communicationWrite)
+	campaigns.GET("", communicationHandler.ListCampaigns, communicationRead)
+	campaigns.POST("/:campaignId/launch", communicationHandler.LaunchCampaign, communicationSend)
+	campaigns.POST("/:campaignId/cancel", communicationHandler.CancelCampaign, communicationWrite)
 
 	// Dashboard routes (protected, tenant-scoped, nested under events).
 	dashboard := events.Group("/:eventId/dashboard")
-	dashboard.GET("", dashboardHandler.GetDashboard)
-	dashboard.GET("/stream", dashboardHandler.StreamDashboard)
+	dashboard.GET("", dashboardHandler.GetDashboard, reportRead)
+	dashboard.GET("/stream", dashboardHandler.StreamDashboard, reportRead)
 
 	// RBAC middleware is injected but route-level enforcement
 	// is applied per-endpoint in production.

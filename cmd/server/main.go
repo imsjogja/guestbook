@@ -173,6 +173,7 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 
 	// Event
 	eventRepo := repository.NewEventRepository(db)
+	eventMemberRepo := repository.NewEventMemberRepository(db)
 	eventSessionRepo := repository.NewEventSessionRepository(db)
 	eventLocationRepo := repository.NewEventLocationRepository(db)
 
@@ -203,6 +204,8 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 	// =====================================================================
 	tenantService := service.NewTenantService(tenantRepo, tenantUserRepo, repository.NewUserRepository(db), auditService)
 	eventService := service.NewEventService(eventRepo, eventSessionRepo, eventLocationRepo, auditService)
+	eventAccessService := service.NewEventAccessService(eventRepo, eventMemberRepo, tenantUserRepo)
+	eventMemberService := service.NewEventMemberService(eventMemberRepo, eventRepo, tenantUserRepo, repository.NewUserRepository(db), auditService)
 	guestService := service.NewGuestService(guestRepo, checkinRepo, householdRepo, guestTagRepo, auditService)
 	eventGuestService := service.NewEventGuestService(eventGuestRepo, eventRepo, guestRepo, guestService, auditService)
 	householdService := service.NewHouseholdService(householdRepo, auditService)
@@ -218,7 +221,8 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 	// =====================================================================
 	authHandler := handler.NewAuthHandler(authService)
 	tenantHandler := handler.NewTenantHandler(tenantService)
-	eventHandler := handler.NewEventHandler(eventService)
+	eventHandler := handler.NewEventHandler(eventService, eventAccessService)
+	eventMemberHandler := handler.NewEventMemberHandler(eventMemberService, eventAccessService)
 	guestHandler := handler.NewGuestHandler(guestService)
 	eventGuestHandler := handler.NewEventGuestHandler(eventGuestService)
 	householdHandler := handler.NewHouseholdHandler(householdService)
@@ -269,6 +273,7 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 		authHandler,
 		tenantHandler,
 		eventHandler,
+		eventMemberHandler,
 		guestHandler,
 		eventGuestHandler,
 		householdHandler,
@@ -282,6 +287,7 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 		htmxDashboardHandler,
 		jwtService,
 		rbacService,
+		eventAccessService,
 		db,
 	)
 

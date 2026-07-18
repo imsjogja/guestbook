@@ -42,6 +42,8 @@ const (
 	PermTeamRead           = "team:read"
 	PermTeamWrite          = "team:write"
 	PermTeamInvite         = "team:invite"
+	PermEventTeamRead      = "event_team:read"
+	PermEventTeamWrite     = "event_team:write"
 	PermSettingsRead       = "settings:read"
 	PermSettingsWrite      = "settings:write"
 	PermAuditRead          = "audit:read"
@@ -85,9 +87,9 @@ func AllPermissions() []string {
 		PermCommunicationSend,
 		PermBillingRead,
 		PermBillingWrite,
-		PermTeamRead,
-		PermTeamWrite,
+		PermTeamRead, PermTeamWrite,
 		PermTeamInvite,
+		PermEventTeamRead, PermEventTeamWrite,
 		PermSettingsRead,
 		PermSettingsWrite,
 		PermAuditRead,
@@ -107,6 +109,7 @@ var RolePermissions = map[string][]string{
 		PermCommunicationRead, PermCommunicationWrite, PermCommunicationSend,
 		PermBillingRead, PermBillingWrite,
 		PermTeamRead, PermTeamWrite, PermTeamInvite,
+		PermEventTeamRead, PermEventTeamWrite,
 		PermSettingsRead, PermSettingsWrite,
 		PermAuditRead,
 	},
@@ -120,6 +123,7 @@ var RolePermissions = map[string][]string{
 		PermReportRead, PermReportExport,
 		PermCommunicationRead, PermCommunicationWrite, PermCommunicationSend,
 		PermTeamRead,
+		PermEventTeamRead, PermEventTeamWrite,
 		PermSettingsRead,
 	},
 	RoleRSVPOfficer: {
@@ -159,6 +163,7 @@ var RolePermissions = map[string][]string{
 		PermReportRead,
 		PermCommunicationRead,
 		PermTeamRead,
+		PermEventTeamRead,
 		PermSettingsRead,
 	},
 }

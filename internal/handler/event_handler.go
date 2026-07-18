@@ -16,13 +16,15 @@ import (
 
 // EventHandler handles HTTP requests for event operations.
 type EventHandler struct {
-	eventService *service.EventService
+	eventService       *service.EventService
+	eventAccessService *service.EventAccessService
 }
 
 // NewEventHandler creates a new EventHandler.
-func NewEventHandler(eventService *service.EventService) *EventHandler {
+func NewEventHandler(eventService *service.EventService, eventAccessService *service.EventAccessService) *EventHandler {
 	return &EventHandler{
-		eventService: eventService,
+		eventService:       eventService,
+		eventAccessService: eventAccessService,
 	}
 }
 
@@ -62,8 +64,12 @@ func (h *EventHandler) List(c echo.Context) error {
 	}
 
 	filter := parseEventFilter(c)
+	userID, err := getUserIDFromEchoContext(c)
+	if err != nil {
+		return response.Error(c, apperrors.Unauthorized("unauthenticated"))
+	}
 
-	events, total, err := h.eventService.List(c.Request().Context(), tenantID, filter)
+	events, total, err := h.eventAccessService.ListAccessibleEvents(c.Request().Context(), tenantID, userID, filter)
 	if err != nil {
 		return response.Error(c, apperrors.WrapInternal(err, "failed to list events"))
 	}
