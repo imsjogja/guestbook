@@ -4,8 +4,11 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
+
+	"guestflow/internal/domain"
 )
 
 type captureMailer struct {
@@ -50,5 +53,19 @@ func TestSendVerificationEmailBuildsPublicVerificationURL(t *testing.T) {
 	}
 	if !strings.Contains(mailer.body, "berlaku selama 24 jam") {
 		t.Fatal("email expiry guidance missing")
+	}
+}
+
+func TestNewAuthEmailTokenHasPurposeAndExpiry(t *testing.T) {
+	before := time.Now().UTC()
+	raw, token, err := newAuthEmailToken(uuid.New(), domain.AuthEmailTokenMagicLogin, 15*time.Minute)
+	if err != nil {
+		t.Fatalf("newAuthEmailToken returned error: %v", err)
+	}
+	if len(raw) != 64 || token.Purpose != domain.AuthEmailTokenMagicLogin {
+		t.Fatalf("unexpected auth email token: %+v", token)
+	}
+	if !token.ExpiresAt.After(before.Add(14 * time.Minute)) {
+		t.Fatal("auth email token expiry is too short")
 	}
 }

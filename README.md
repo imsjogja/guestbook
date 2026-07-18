@@ -239,6 +239,14 @@ curl -X POST http://localhost:8080/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"demo@guestflow.id","password":"password123"}'
 
+# Request password reset or passwordless login link
+curl -X POST http://localhost:8080/api/v1/auth/forgot-password \
+  -H "Content-Type: application/json" \
+  -d '{"email":"member@example.com"}'
+curl -X POST http://localhost:8080/api/v1/auth/magic-link \
+  -H "Content-Type: application/json" \
+  -d '{"email":"member@example.com"}'
+
 # List events (with Bearer token)
 curl http://localhost:8080/api/v1/tenants/TENANT_ID/events \
   -H "Authorization: Bearer YOUR_TOKEN" \
@@ -258,6 +266,12 @@ OpenAPI 3.0 specification available at `docs/api/openapi.yaml`.
 | `POST` | `/api/v1/auth/register` | User registration |
 | `POST` | `/api/v1/auth/login` | User login |
 | `POST` | `/api/v1/auth/refresh` | Refresh token |
+| `GET`  | `/api/v1/auth/verify-email` | Verify registration email |
+| `POST` | `/api/v1/auth/resend-verification` | Resend registration verification |
+| `POST` | `/api/v1/auth/forgot-password` | Send password reset link |
+| `POST` | `/api/v1/auth/reset-password` | Set a new password from a reset token |
+| `POST` | `/api/v1/auth/magic-link` | Send passwordless login link |
+| `POST` | `/api/v1/auth/magic-link/consume` | Consume passwordless login token |
 | `POST` | `/api/v1/auth/logout` | Logout |
 | `GET`  | `/api/v1/auth/me` | Current user |
 | `POST` | `/api/v1/tenants` | Create tenant |

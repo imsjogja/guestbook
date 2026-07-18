@@ -42,6 +42,7 @@ type AuthService struct {
 	userRepo           *repository.UserRepository
 	tokenRepo          *repository.RefreshTokenRepository
 	verificationRepo   *repository.EmailVerificationRepository
+	actionTokenRepo    *repository.AuthEmailTokenRepository
 	mailer             email.Mailer
 	verifyEmailEnabled bool
 	publicURL          string
@@ -63,6 +64,7 @@ func NewAuthService(
 		userRepo:           repository.NewUserRepository(db),
 		tokenRepo:          repository.NewRefreshTokenRepository(db),
 		verificationRepo:   repository.NewEmailVerificationRepository(db),
+		actionTokenRepo:    repository.NewAuthEmailTokenRepository(db),
 		mailer:             mailer,
 		verifyEmailEnabled: verifyEmailEnabled,
 		publicURL:          strings.TrimRight(publicURL, "/"),
@@ -254,6 +256,138 @@ func (s *AuthService) ResendVerification(ctx context.Context, emailAddress strin
 		return fmt.Errorf("%w: %v", ErrEmailDelivery, err)
 	}
 	return nil
+}
+
+// ForgotPassword issues a one-time password reset link without revealing
+// whether the address exists.
+func (s *AuthService) ForgotPassword(ctx context.Context, emailAddress string) error {
+	if !s.verifyEmailEnabled {
+		return nil
+	}
+	user, err := s.userRepo.GetByEmail(ctx, strings.ToLower(strings.TrimSpace(emailAddress)))
+	if err != nil || !user.IsActive() {
+		return nil
+	}
+
+	rawToken, err := s.createAuthEmailToken(ctx, user.ID, domain.AuthEmailTokenPasswordReset, 30*time.Minute)
+	if err != nil {
+		return err
+	}
+	body := fmt.Sprintf("Halo %s,\n\nGunakan tautan berikut untuk membuat kata sandi baru GuestFlow Anda:\n%s/reset-password?token=%s\n\nTautan ini berlaku selama 30 menit dan hanya dapat digunakan sekali.\n\nJika Anda tidak meminta perubahan kata sandi, abaikan email ini.\n", user.FullName, strings.TrimRight(s.publicURL, "/"), url.QueryEscape(rawToken))
+	if err := s.mailer.Send(ctx, user.Email, "Reset kata sandi GuestFlow", body); err != nil {
+		return fmt.Errorf("%w: %v", ErrEmailDelivery, err)
+	}
+	return nil
+}
+
+// ResetPassword consumes a reset token, changes the password, and revokes all
+// existing refresh sessions for the account.
+func (s *AuthService) ResetPassword(ctx context.Context, rawToken, password string) error {
+	if !s.verifyEmailEnabled || strings.TrimSpace(rawToken) == "" {
+		return ErrTokenInvalid
+	}
+	passwordHash, err := auth.HashPassword(password)
+	if err != nil {
+		return fmt.Errorf("hash reset password: %w", err)
+	}
+	userID, err := s.actionTokenRepo.Consume(ctx, hashVerificationToken(rawToken), domain.AuthEmailTokenPasswordReset, time.Now().UTC())
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrTokenInvalid, err)
+	}
+	if err := s.userRepo.UpdatePassword(ctx, userID, passwordHash); err != nil {
+		return err
+	}
+	if err := s.tokenRepo.RevokeAllForUser(ctx, userID); err != nil {
+		return fmt.Errorf("revoke sessions after password reset: %w", err)
+	}
+	return nil
+}
+
+// RequestMagicLink sends a passwordless login link only to active, verified
+// accounts. Unknown and unverified accounts receive the same generic outcome.
+func (s *AuthService) RequestMagicLink(ctx context.Context, emailAddress string) error {
+	if !s.verifyEmailEnabled {
+		return nil
+	}
+	user, err := s.userRepo.GetByEmail(ctx, strings.ToLower(strings.TrimSpace(emailAddress)))
+	if err != nil || !user.IsActive() || user.EmailVerifiedAt == nil {
+		return nil
+	}
+
+	rawToken, err := s.createAuthEmailToken(ctx, user.ID, domain.AuthEmailTokenMagicLogin, 15*time.Minute)
+	if err != nil {
+		return err
+	}
+	body := fmt.Sprintf("Halo %s,\n\nKlik tautan berikut untuk masuk ke GuestFlow tanpa kata sandi:\n%s/magic-login?token=%s\n\nTautan ini berlaku selama 15 menit dan hanya dapat digunakan sekali.\n\nJika Anda tidak meminta link masuk, abaikan email ini.\n", user.FullName, strings.TrimRight(s.publicURL, "/"), url.QueryEscape(rawToken))
+	if err := s.mailer.Send(ctx, user.Email, "Link masuk GuestFlow", body); err != nil {
+		return fmt.Errorf("%w: %v", ErrEmailDelivery, err)
+	}
+	return nil
+}
+
+// ConsumeMagicLink consumes a passwordless login token and creates a normal
+// access/refresh session pair.
+func (s *AuthService) ConsumeMagicLink(ctx context.Context, rawToken string) (*domain.User, *auth.TokenPair, error) {
+	if !s.verifyEmailEnabled || strings.TrimSpace(rawToken) == "" {
+		return nil, nil, ErrTokenInvalid
+	}
+	userID, err := s.actionTokenRepo.Consume(ctx, hashVerificationToken(rawToken), domain.AuthEmailTokenMagicLogin, time.Now().UTC())
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: %v", ErrTokenInvalid, err)
+	}
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("get magic link user: %w", err)
+	}
+	if !user.IsActive() || (s.verifyEmailEnabled && user.EmailVerifiedAt == nil) {
+		return nil, nil, ErrEmailNotVerified
+	}
+	tokens, err := s.jwtService.GenerateTokenPair(user.ID, user.Email)
+	if err != nil {
+		return nil, nil, fmt.Errorf("generate magic link tokens: %w", err)
+	}
+	_, rawRefreshToken, err := s.refreshSvc.Create(ctx, user.ID, "magic-link")
+	if err != nil {
+		return nil, nil, fmt.Errorf("create magic link refresh token: %w", err)
+	}
+	tokens.RefreshToken = rawRefreshToken
+	user.Sanitize()
+	return user, tokens, nil
+}
+
+func (s *AuthService) createAuthEmailToken(ctx context.Context, userID uuid.UUID, purpose string, lifetime time.Duration) (string, error) {
+	rawToken, token, err := newAuthEmailToken(userID, purpose, lifetime)
+	if err != nil {
+		return "", err
+	}
+	tx, err := s.db.BeginTxx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	if err != nil {
+		return "", fmt.Errorf("begin auth email token transaction: %w", err)
+	}
+	defer tx.Rollback()
+	if err := s.actionTokenRepo.InvalidateActive(ctx, tx, userID, purpose); err != nil {
+		return "", err
+	}
+	if err := s.actionTokenRepo.Create(ctx, tx, token); err != nil {
+		return "", err
+	}
+	if err := tx.Commit(); err != nil {
+		return "", fmt.Errorf("commit auth email token transaction: %w", err)
+	}
+	return rawToken, nil
+}
+
+func newAuthEmailToken(userID uuid.UUID, purpose string, lifetime time.Duration) (string, *domain.AuthEmailToken, error) {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return "", nil, err
+	}
+	rawToken := hex.EncodeToString(raw)
+	now := time.Now().UTC()
+	return rawToken, &domain.AuthEmailToken{
+		ID: uuid.New(), UserID: userID, Purpose: purpose,
+		TokenHash: hashVerificationToken(rawToken), ExpiresAt: now.Add(lifetime), CreatedAt: now,
+	}, nil
 }
 
 func newVerificationToken(userID uuid.UUID) (string, *domain.EmailVerificationToken, error) {

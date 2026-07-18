@@ -57,6 +57,15 @@ type emailRequest struct {
 	Email string `json:"email" validate:"required,email"`
 }
 
+type resetPasswordRequest struct {
+	Token    string `json:"token" validate:"required"`
+	Password string `json:"password" validate:"required,min=8"`
+}
+
+type tokenRequest struct {
+	Token string `json:"token" validate:"required"`
+}
+
 func (h *AuthHandler) Register(c echo.Context) error {
 	var req domain.RegisterRequest
 	if err := c.Bind(&req); err != nil {
@@ -103,6 +112,69 @@ func (h *AuthHandler) ResendVerification(c echo.Context) error {
 		return h.handleAuthError(c, err)
 	}
 	return c.JSON(http.StatusAccepted, map[string]string{"message": "jika akun tersedia dan belum terverifikasi, email verifikasi telah dikirim ulang"})
+}
+
+func (h *AuthHandler) ForgotPassword(c echo.Context) error {
+	var req emailRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "invalid request body"})
+	}
+	if err := c.Validate(&req); err != nil {
+		return h.validationError(c, err)
+	}
+	if err := h.authService.ForgotPassword(c.Request().Context(), req.Email); err != nil {
+		return h.handleAuthError(c, err)
+	}
+	return c.JSON(http.StatusAccepted, map[string]string{"message": "jika akun tersedia, link reset kata sandi telah dikirim"})
+}
+
+func (h *AuthHandler) ResetPassword(c echo.Context) error {
+	var req resetPasswordRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "invalid request body"})
+	}
+	if err := c.Validate(&req); err != nil {
+		return h.validationError(c, err)
+	}
+	if err := h.authService.ResetPassword(c.Request().Context(), req.Token, req.Password); err != nil {
+		if errors.Is(err, service.ErrTokenInvalid) {
+			return c.JSON(http.StatusBadRequest, map[string]string{"message": "link reset kata sandi tidak valid atau sudah kedaluwarsa"})
+		}
+		return h.handleAuthError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]string{"message": "kata sandi berhasil diubah"})
+}
+
+func (h *AuthHandler) RequestMagicLink(c echo.Context) error {
+	var req emailRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "invalid request body"})
+	}
+	if err := c.Validate(&req); err != nil {
+		return h.validationError(c, err)
+	}
+	if err := h.authService.RequestMagicLink(c.Request().Context(), req.Email); err != nil {
+		return h.handleAuthError(c, err)
+	}
+	return c.JSON(http.StatusAccepted, map[string]string{"message": "jika akun tersedia dan sudah terverifikasi, link masuk telah dikirim"})
+}
+
+func (h *AuthHandler) ConsumeMagicLink(c echo.Context) error {
+	var req tokenRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"message": "invalid request body"})
+	}
+	if err := c.Validate(&req); err != nil {
+		return h.validationError(c, err)
+	}
+	user, tokens, err := h.authService.ConsumeMagicLink(c.Request().Context(), req.Token)
+	if err != nil {
+		if errors.Is(err, service.ErrTokenInvalid) {
+			return c.JSON(http.StatusBadRequest, map[string]string{"message": "link masuk tidak valid atau sudah kedaluwarsa"})
+		}
+		return h.handleAuthError(c, err)
+	}
+	return c.JSON(http.StatusOK, buildAuthResponse(user, tokens))
 }
 
 func (h *AuthHandler) Login(c echo.Context) error {
@@ -175,7 +247,7 @@ func (h *AuthHandler) handleAuthError(c echo.Context, err error) error {
 	case errors.Is(err, service.ErrEmailNotVerified):
 		return c.JSON(http.StatusForbidden, map[string]string{"code": "EMAIL_NOT_VERIFIED", "message": "silakan verifikasi email sebelum masuk"})
 	case errors.Is(err, service.ErrEmailDelivery):
-		return c.JSON(http.StatusServiceUnavailable, map[string]string{"message": "akun dibuat, tetapi email verifikasi belum berhasil dikirim. Silakan coba kirim ulang."})
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"message": "email belum berhasil dikirim. Silakan coba lagi."})
 	case errors.Is(err, service.ErrUserNotFound):
 		return c.JSON(http.StatusNotFound, map[string]string{"message": "user not found"})
 	case errors.Is(err, service.ErrTokenInvalid):

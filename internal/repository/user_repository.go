@@ -117,6 +117,27 @@ func (r *UserRepository) Update(ctx context.Context, user *domain.User) error {
 	return nil
 }
 
+// UpdatePassword replaces a user's password hash and refreshes its timestamp.
+func (r *UserRepository) UpdatePassword(ctx context.Context, id uuid.UUID, passwordHash string) error {
+	now := time.Now().UTC()
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE users
+		SET password_hash = $1, updated_at = $2
+		WHERE id = $3 AND deleted_at IS NULL
+	`, passwordHash, now, id)
+	if err != nil {
+		return fmt.Errorf("update user password: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check password update result: %w", err)
+	}
+	if rows == 0 {
+		return domain.ErrUserNotFound
+	}
+	return nil
+}
+
 // SoftDelete marks a user as deleted by setting the deleted_at timestamp.
 // The user record is retained in the database for audit and referential integrity.
 func (r *UserRepository) SoftDelete(ctx context.Context, id uuid.UUID) error {

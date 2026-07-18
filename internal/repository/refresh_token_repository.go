@@ -84,7 +84,7 @@ func (r *RefreshTokenRepository) RevokeAllForUser(ctx context.Context, userID uu
 
 	query := `
 		UPDATE refresh_tokens
-		SET revoked_at = $1, revoked_by = $1
+		SET revoked_at = $1, revoked_by = NULL
 		WHERE user_id = $2 AND revoked_at IS NULL
 	`
 	_, err := r.db.ExecContext(ctx, query, now, userID)

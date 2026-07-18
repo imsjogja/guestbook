@@ -166,6 +166,8 @@ func defaultTenantSkipper(c echo.Context) bool {
 		"/api/v1/auth/resend-verification",
 		"/api/v1/auth/forgot-password",
 		"/api/v1/auth/reset-password",
+		"/api/v1/auth/magic-link",
+		"/api/v1/auth/magic-link/consume",
 		"/api/v1/tenants",
 	}
 

@@ -44,6 +44,10 @@ func RegisterRoutes(
 	authGroup.POST("/refresh", authHandler.Refresh)
 	authGroup.GET("/verify-email", authHandler.VerifyEmail)
 	authGroup.POST("/resend-verification", authHandler.ResendVerification)
+	authGroup.POST("/forgot-password", authHandler.ForgotPassword)
+	authGroup.POST("/reset-password", authHandler.ResetPassword)
+	authGroup.POST("/magic-link", authHandler.RequestMagicLink)
+	authGroup.POST("/magic-link/consume", authHandler.ConsumeMagicLink)
 
 	// Public RSVP submission route (no auth required - accessed by token).
 	api.POST("/rsvp", rsvpHandler.Submit)
