@@ -16,6 +16,7 @@ import (
 	"guestflow/internal/service"
 
 	"github.com/labstack/echo/v4"
+	"github.com/skip2/go-qrcode"
 )
 
 // InvitationSiteHandler serves the public invitation microsite.
@@ -115,9 +116,29 @@ type galleryImage struct {
 func (h *InvitationSiteHandler) RegisterSiteRoutes(e *echo.Echo) {
 	// Invitation microsite - the main guest-facing page
 	e.GET("/i/:token", h.ShowInvitation)
+	e.GET("/api/v1/qr/:token", h.ServeQRCode)
 
 	// Admin dashboard SPA (static HTML, JS handles API calls)
 	e.GET("/admin", h.ShowAdminDashboard)
+}
+
+// ServeQRCode returns a QR image for a valid invitation token.
+// The token is the scanner credential, so invalid or expired invitations do
+// not receive an image.
+func (h *InvitationSiteHandler) ServeQRCode(c echo.Context) error {
+	token := c.Param("token")
+	if token == "" {
+		return c.NoContent(http.StatusBadRequest)
+	}
+	if _, err := h.invitationService.ValidateToken(c.Request().Context(), token); err != nil {
+		return c.NoContent(http.StatusNotFound)
+	}
+
+	png, err := qrcode.Encode(token, qrcode.Medium, 256)
+	if err != nil {
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	return c.Blob(http.StatusOK, "image/png", png)
 }
 
 // ---------------------------------------------------------------------------
