@@ -63,10 +63,10 @@ func (r *EventMemberRepository) ListByEvent(ctx context.Context, tenantID, event
 	members := make([]*domain.EventMember, 0)
 	query := `
 		SELECT * FROM event_members
-		WHERE tenant_id = $1 AND event_id = $2
+		WHERE tenant_id = $1 AND event_id = $2 AND status = $3
 		ORDER BY created_at ASC
 	`
-	if err := r.db.SelectContext(ctx, &members, query, tenantID, eventID); err != nil {
+	if err := r.db.SelectContext(ctx, &members, query, tenantID, eventID, domain.EventMemberStatusActive); err != nil {
 		return nil, fmt.Errorf("list event members: %w", err)
 	}
 	return members, nil
@@ -96,7 +96,7 @@ func (r *EventMemberRepository) Deactivate(ctx context.Context, tenantID, eventI
 	query := `
 		UPDATE event_members
 		SET status = $1, updated_at = NOW()
-		WHERE tenant_id = $2 AND event_id = $3 AND user_id = $4 AND status <> $1
+		WHERE tenant_id = $2 AND event_id = $3 AND user_id = $4
 	`
 	result, err := r.db.ExecContext(ctx, query, domain.EventMemberStatusInactive, tenantID, eventID, userID)
 	if err != nil {
