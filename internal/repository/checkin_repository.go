@@ -64,6 +64,23 @@ func (r *CheckinRepository) GetByID(ctx context.Context, tenantID, id uuid.UUID)
 	return &checkin, nil
 }
 
+// ListByGuest returns successful check-ins for a guest across the tenant's events.
+// The tenant and guest predicates are both required to prevent cross-tenant access.
+func (r *CheckinRepository) ListByGuest(ctx context.Context, tenantID, guestID uuid.UUID) ([]domain.Checkin, error) {
+	query := `
+		SELECT * FROM checkins
+		WHERE tenant_id = $1 AND guest_id = $2
+		  AND deleted_at IS NULL AND status = $3
+		ORDER BY created_at DESC
+	`
+
+	checkins := make([]domain.Checkin, 0)
+	if err := r.db.SelectContext(ctx, &checkins, query, tenantID, guestID, domain.CheckinStatusSuccess); err != nil {
+		return nil, fmt.Errorf("list checkins by guest: %w", err)
+	}
+	return checkins, nil
+}
+
 // ListByEvent lists check-in records for an event with optional filters and pagination.
 func (r *CheckinRepository) ListByEvent(ctx context.Context, params domain.CheckinListParams) ([]*domain.Checkin, error) {
 	if params.Page < 1 {

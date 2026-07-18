@@ -203,7 +203,7 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 	// =====================================================================
 	tenantService := service.NewTenantService(tenantRepo, tenantUserRepo, repository.NewUserRepository(db), auditService)
 	eventService := service.NewEventService(eventRepo, eventSessionRepo, eventLocationRepo, auditService)
-	guestService := service.NewGuestService(guestRepo, householdRepo, guestTagRepo, auditService)
+	guestService := service.NewGuestService(guestRepo, checkinRepo, householdRepo, guestTagRepo, auditService)
 	eventGuestService := service.NewEventGuestService(eventGuestRepo, eventRepo, guestRepo, guestService, auditService)
 	householdService := service.NewHouseholdService(householdRepo, auditService)
 	invitationService := service.NewInvitationService(invitationRepo, eventRepo, rsvpRepo, guestRepo, eventGuestRepo, auditService)

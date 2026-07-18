@@ -194,7 +194,11 @@ func (h *InvitationSiteHandler) ShowInvitation(c echo.Context) error {
 	rsvp, _ := h.rsvpService.GetByInvitation(ctx, invitation.TenantID, invitation.EventID, invitation.ID)
 
 	// Build view model
-	vm := h.buildViewModel(invitation, event, guest, rsvp, token)
+	var guestProfile *domain.Guest
+	if guest != nil {
+		guestProfile = guest.Guest
+	}
+	vm := h.buildViewModel(invitation, event, guestProfile, rsvp, token)
 
 	// Render template
 	return c.Render(http.StatusOK, "invitation.html", vm)

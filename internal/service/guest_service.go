@@ -16,21 +16,30 @@ import (
 // GuestService encapsulates business logic for guest operations.
 type GuestService struct {
 	guestRepo     *repository.GuestRepository
+	checkinRepo   *repository.CheckinRepository
 	householdRepo *repository.HouseholdRepository
 	tagRepo       *repository.GuestTagRepository
 	audit         *audit.Service
 	importService *ImportService
 }
 
+// GuestDetail is the tenant guest profile enriched with check-in history.
+type GuestDetail struct {
+	*domain.Guest
+	Checkins []domain.Checkin `json:"checkins"`
+}
+
 // NewGuestService creates a new GuestService.
 func NewGuestService(
 	guestRepo *repository.GuestRepository,
+	checkinRepo *repository.CheckinRepository,
 	householdRepo *repository.HouseholdRepository,
 	tagRepo *repository.GuestTagRepository,
 	auditSvc *audit.Service,
 ) *GuestService {
 	svc := &GuestService{
 		guestRepo:     guestRepo,
+		checkinRepo:   checkinRepo,
 		householdRepo: householdRepo,
 		tagRepo:       tagRepo,
 		audit:         auditSvc,
@@ -79,12 +88,18 @@ func (s *GuestService) Create(ctx context.Context, tenantID, createdBy uuid.UUID
 }
 
 // Get retrieves a guest by ID with tenant isolation.
-func (s *GuestService) Get(ctx context.Context, tenantID, guestID uuid.UUID) (*domain.Guest, error) {
+func (s *GuestService) Get(ctx context.Context, tenantID, guestID uuid.UUID) (*GuestDetail, error) {
 	guest, err := s.guestRepo.GetByIDForTenant(ctx, tenantID, guestID)
 	if err != nil {
 		return nil, fmt.Errorf("get guest: %w", err)
 	}
-	return guest, nil
+
+	checkins, err := s.checkinRepo.ListByGuest(ctx, tenantID, guestID)
+	if err != nil {
+		return nil, fmt.Errorf("get guest check-ins: %w", err)
+	}
+
+	return &GuestDetail{Guest: guest, Checkins: checkins}, nil
 }
 
 // List lists guests for a tenant with filtering and pagination.
