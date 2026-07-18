@@ -133,8 +133,13 @@ func (h *InvitationSiteHandler) ShowInvitation(c echo.Context) error {
 	// Look up the invitation by its opaque token
 	invitation, err := h.invitationService.ValidateToken(c.Request().Context(), token)
 	if err != nil {
-		if stderrors.Is(err, domain.ErrNotFound) {
+		if stderrors.Is(err, domain.ErrTokenInvalid) ||
+			stderrors.Is(err, domain.ErrInvitationNotFound) ||
+			stderrors.Is(err, domain.ErrNotFound) {
 			return c.HTML(http.StatusNotFound, errorPage("Invitation not found or has been revoked"))
+		}
+		if stderrors.Is(err, domain.ErrInvitationRevoked) || stderrors.Is(err, domain.ErrInvitationExpired) {
+			return c.HTML(http.StatusGone, errorPage("This invitation is no longer available"))
 		}
 		return c.HTML(http.StatusInternalServerError, errorPage("Unable to load invitation. Please try again later."))
 	}
