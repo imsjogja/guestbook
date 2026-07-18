@@ -106,11 +106,15 @@ func (s *AuthService) Register(ctx context.Context, req domain.RegisterRequest) 
 		return nil, nil, fmt.Errorf("generate tokens: %w", err)
 	}
 
-	// Store refresh token
-	_, _, err = s.refreshSvc.Create(ctx, user.ID, "default")
+	// Store the refresh token in the same transaction as the user. The user
+	// foreign key is not visible to another connection until this transaction
+	// commits, so using the shared transaction avoids a registration-time FK
+	// violation.
+	_, rawRefreshToken, err := s.refreshSvc.CreateWithExecutor(ctx, tx, user.ID, "default")
 	if err != nil {
 		return nil, nil, fmt.Errorf("create refresh token: %w", err)
 	}
+	tokenPair.RefreshToken = rawRefreshToken
 
 	if err := tx.Commit(); err != nil {
 		return nil, nil, fmt.Errorf("commit transaction: %w", err)

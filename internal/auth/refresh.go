@@ -36,6 +36,16 @@ func NewRefreshTokenService(db *sqlx.DB) *RefreshTokenService {
 // The deviceInfo parameter can be used to store device fingerprint information
 // for display in token management UIs (e.g., "Chrome on macOS").
 func (s *RefreshTokenService) Create(ctx context.Context, userID uuid.UUID, deviceInfo string) (*domain.RefreshToken, string, error) {
+	return s.create(ctx, s.db, userID, deviceInfo)
+}
+
+// CreateWithExecutor creates a refresh token using an existing database
+// transaction. This keeps token creation atomic with user registration.
+func (s *RefreshTokenService) CreateWithExecutor(ctx context.Context, executor sqlx.ExtContext, userID uuid.UUID, deviceInfo string) (*domain.RefreshToken, string, error) {
+	return s.create(ctx, executor, userID, deviceInfo)
+}
+
+func (s *RefreshTokenService) create(ctx context.Context, executor sqlx.ExtContext, userID uuid.UUID, deviceInfo string) (*domain.RefreshToken, string, error) {
 	// Generate a cryptographically secure random token
 	rawToken := uuid.New().String() + "/" + uuid.New().String()
 
@@ -58,7 +68,7 @@ func (s *RefreshTokenService) Create(ctx context.Context, userID uuid.UUID, devi
 		INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at, device_info, created_at)
 		VALUES (:id, :user_id, :token_hash, :expires_at, :device_info, :created_at)
 	`
-	_, err := s.db.NamedExecContext(ctx, query, token)
+	_, err := sqlx.NamedExecContext(ctx, executor, query, token)
 	if err != nil {
 		return nil, "", fmt.Errorf("store refresh token: %w", err)
 	}

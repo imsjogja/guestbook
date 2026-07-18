@@ -64,6 +64,7 @@ func RegisterRoutes(
 	tenants.POST("", tenantHandler.Create)
 	tenants.GET("", tenantHandler.List)
 	tenants.GET("/:id", tenantHandler.Get)
+	tenants.GET("/:id/access", tenantHandler.Access, tenantTeamRead)
 	tenants.PATCH("/:id", tenantHandler.Update)
 	tenants.GET("/:id/users", tenantHandler.ListUsers, tenantTeamRead)
 	tenants.POST("/:id/users/invite", tenantHandler.InviteUser, tenantTeamInvite)

@@ -150,6 +150,29 @@ func (h *TenantHandler) List(c echo.Context) error {
 	return c.JSON(http.StatusOK, TenantResponse{Data: tenants})
 }
 
+// Access handles GET /api/v1/tenants/:id/access.
+func (h *TenantHandler) Access(c echo.Context) error {
+	tenantID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, TenantResponse{Error: "invalid tenant id"})
+	}
+
+	userID, err := getUserIDFromEchoContext(c)
+	if err != nil {
+		return c.JSON(http.StatusUnauthorized, TenantResponse{Error: "unauthenticated"})
+	}
+
+	access, err := h.tenantService.GetAccess(c.Request().Context(), tenantID, userID)
+	if err != nil {
+		if errors.Is(err, domain.ErrMembershipNotFound) {
+			return c.JSON(http.StatusForbidden, TenantResponse{Error: "insufficient tenant permissions"})
+		}
+		return c.JSON(http.StatusInternalServerError, TenantResponse{Error: "failed to retrieve tenant access"})
+	}
+
+	return c.JSON(http.StatusOK, TenantResponse{Data: access})
+}
+
 // ListUsers handles GET /api/v1/tenants/:id/users - lists tenant members.
 func (h *TenantHandler) ListUsers(c echo.Context) error {
 	tenantID, err := uuid.Parse(c.Param("id"))

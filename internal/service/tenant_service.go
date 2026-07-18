@@ -42,6 +42,27 @@ type TenantMemberRecord struct {
 	User       *domain.User
 }
 
+// TenantAccess describes the authenticated user's effective tenant permissions.
+type TenantAccess struct {
+	Role        string   `json:"role"`
+	Scope       string   `json:"scope"`
+	Permissions []string `json:"permissions"`
+}
+
+// GetAccess returns the effective role and permissions for a tenant member.
+func (s *TenantService) GetAccess(ctx context.Context, tenantID, userID uuid.UUID) (*TenantAccess, error) {
+	membership, err := s.tenantUserRepo.Get(ctx, tenantID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get tenant access: %w", err)
+	}
+
+	return &TenantAccess{
+		Role:        membership.Role,
+		Scope:       "tenant",
+		Permissions: append([]string(nil), domain.RolePermissions[membership.Role]...),
+	}, nil
+}
+
 // Create creates a new tenant and adds the creator as the tenant owner.
 func (s *TenantService) Create(ctx context.Context, userID uuid.UUID, req domain.TenantCreateRequest) (*domain.Tenant, error) {
 	// Normalize slug.
