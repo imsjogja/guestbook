@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -87,6 +88,35 @@ func TestDefaultRSVPReminderTemplates(t *testing.T) {
 	}
 	if !seenChannels[domain.ChannelWhatsApp] || !seenChannels[domain.ChannelEmail] {
 		t.Fatalf("default reminder templates must include WhatsApp and email: %#v", seenChannels)
+	}
+}
+
+func TestValidateRSVPReminderTemplate(t *testing.T) {
+	tests := []struct {
+		name         string
+		channel      string
+		templateType string
+		wantErr      error
+	}{
+		{name: "whatsapp follow up", channel: domain.ChannelWhatsApp, templateType: domain.MsgTypeRSVPFollowUp},
+		{name: "email follow up", channel: domain.ChannelEmail, templateType: domain.MsgTypeRSVPFollowUp},
+		{name: "sms is unsupported", channel: domain.ChannelSMS, templateType: domain.MsgTypeRSVPFollowUp, wantErr: domain.ErrInvalidChannel},
+		{name: "invitation type is unsupported", channel: domain.ChannelWhatsApp, templateType: domain.MsgTypeInvitation, wantErr: domain.ErrInvalidMessageType},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateRSVPReminderTemplate(&domain.CommunicationTemplate{Channel: tt.channel, Type: tt.templateType})
+			if tt.wantErr == nil {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("error = %v, want %v", err, tt.wantErr)
+			}
+		})
 	}
 }
 

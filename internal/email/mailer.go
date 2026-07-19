@@ -5,6 +5,7 @@ package email
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"mime"
 	"net"
@@ -15,9 +16,16 @@ import (
 	"guestflow/internal/config"
 )
 
+var ErrNotConfigured = errors.New("email delivery is not configured")
+
 // Mailer sends a plain-text email.
 type Mailer interface {
 	Send(ctx context.Context, to, subject, body string) error
+}
+
+// HTMLMailer is implemented by mailers that can preserve HTML email bodies.
+type HTMLMailer interface {
+	SendHTML(ctx context.Context, to, subject, body string) error
 }
 
 // SMTPMailer sends mail using STARTTLS on port 587 or implicit TLS on port 465.
@@ -30,11 +38,19 @@ func NewSMTPMailer(cfg config.EmailConfig) *SMTPMailer {
 }
 
 func (m *SMTPMailer) Send(ctx context.Context, to, subject, body string) error {
+	return m.send(ctx, to, subject, body, "text/plain")
+}
+
+func (m *SMTPMailer) SendHTML(ctx context.Context, to, subject, body string) error {
+	return m.send(ctx, to, subject, body, "text/html")
+}
+
+func (m *SMTPMailer) send(ctx context.Context, to, subject, body, contentType string) error {
 	if !m.cfg.Enabled {
-		return fmt.Errorf("email delivery is disabled")
+		return fmt.Errorf("%w: delivery is disabled", ErrNotConfigured)
 	}
 	if strings.TrimSpace(m.cfg.Host) == "" || strings.TrimSpace(m.cfg.User) == "" || strings.TrimSpace(m.cfg.Password) == "" || strings.TrimSpace(m.cfg.From) == "" {
-		return fmt.Errorf("SMTP configuration is incomplete")
+		return fmt.Errorf("%w: SMTP configuration is incomplete", ErrNotConfigured)
 	}
 
 	port := m.cfg.Port
@@ -93,7 +109,7 @@ func (m *SMTPMailer) Send(ctx context.Context, to, subject, body string) error {
 	if strings.TrimSpace(m.cfg.FromName) != "" {
 		from = fmt.Sprintf("%s <%s>", fromName, m.cfg.From)
 	}
-	message := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nDate: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n%s\r\n", from, to, mime.QEncoding.Encode("UTF-8", subject), time.Now().UTC().Format(time.RFC1123Z), body)
+	message := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nDate: %s\r\nMIME-Version: 1.0\r\nContent-Type: %s; charset=UTF-8\r\n\r\n%s\r\n", from, to, mime.QEncoding.Encode("UTF-8", subject), time.Now().UTC().Format(time.RFC1123Z), contentType, body)
 	if _, err := writer.Write([]byte(message)); err != nil {
 		writer.Close()
 		return fmt.Errorf("write SMTP message: %w", err)

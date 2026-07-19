@@ -218,7 +218,7 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 	seatingService := service.NewSeatingService(seatingRepo, guestRepo, eventGuestRepo, auditService)
 	whatsappClient := whatsapp.NewClient(cfg.WhatsApp)
 	whatsappIntegrationService := service.NewWhatsAppIntegrationService(tenantRepo, whatsappClient, cfg.WhatsApp, cfg.JWT.Secret, auditService)
-	commService := service.NewCommunicationService(commRepo, guestRepo, eventGuestRepo, eventRepo, invitationRepo, whatsappClient, cfg.App.PublicURL)
+	commService := service.NewCommunicationService(commRepo, guestRepo, eventGuestRepo, eventRepo, invitationRepo, whatsappClient, authMailer, cfg.App.PublicURL)
 	commService.SetWhatsAppConfigProvider(whatsappIntegrationService)
 	dashboardService := service.NewDashboardService(db, eventRepo, rsvpRepo, checkinRepo, commRepo, seatingRepo)
 

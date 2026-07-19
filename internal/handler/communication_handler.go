@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"guestflow/internal/domain"
+	"guestflow/internal/email"
 	"guestflow/internal/service"
 	"guestflow/internal/whatsapp"
 	appresponse "guestflow/pkg/response"
@@ -521,10 +522,14 @@ func (h *CommunicationHandler) SendRSVPReminders(c echo.Context) error {
 			return appresponse.NotFound(c, "Template")
 		case stderrors.Is(err, domain.ErrTemplateInactive):
 			return appresponse.Conflict(c, "Template is inactive")
+		case stderrors.Is(err, domain.ErrInvalidChannel), stderrors.Is(err, domain.ErrInvalidMessageType):
+			return appresponse.ValidationError(c, err.Error())
 		case stderrors.Is(err, domain.ErrNotFound), stderrors.Is(err, domain.ErrEventNotFound):
 			return appresponse.NotFound(c, "Event")
 		case stderrors.Is(err, whatsapp.ErrNotConfigured):
 			return appresponse.ServiceUnavailable(c, "WhatsApp belum dikonfigurasi")
+		case stderrors.Is(err, email.ErrNotConfigured):
+			return appresponse.ServiceUnavailable(c, "Email belum dikonfigurasi")
 		default:
 			return appresponse.InternalError(c, "Failed to send RSVP reminders")
 		}

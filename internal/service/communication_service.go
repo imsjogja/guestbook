@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"guestflow/internal/domain"
+	"guestflow/internal/email"
 	"guestflow/internal/repository"
 	"guestflow/internal/whatsapp"
 
@@ -24,6 +25,7 @@ type CommunicationService struct {
 	eventRepo      *repository.EventRepository
 	invitationRepo *repository.InvitationRepository
 	whatsapp       *whatsapp.Client
+	mailer         email.Mailer
 	whatsappConfig WhatsAppConfigProvider
 	baseURL        string
 }
@@ -123,6 +125,7 @@ func NewCommunicationService(
 	eventRepo *repository.EventRepository,
 	invitationRepo *repository.InvitationRepository,
 	whatsappClient *whatsapp.Client,
+	mailer email.Mailer,
 	baseURL string,
 ) *CommunicationService {
 	return &CommunicationService{
@@ -132,6 +135,7 @@ func NewCommunicationService(
 		eventRepo:      eventRepo,
 		invitationRepo: invitationRepo,
 		whatsapp:       whatsappClient,
+		mailer:         mailer,
 		baseURL:        baseURL,
 	}
 }
@@ -583,6 +587,39 @@ func (s *CommunicationService) dispatchWhatsApp(ctx context.Context, tenantID uu
 	return nil
 }
 
+// dispatchEmail sends a rendered email and persists the provider outcome on
+// the message row. Delivery failures remain visible as failed messages rather
+// than being reported as successfully queued reminders.
+func (s *CommunicationService) dispatchEmail(ctx context.Context, tenantID uuid.UUID, msg *domain.CommunicationMessage, recipient, subject, body string) error {
+	var sendErr error
+	if s.mailer == nil {
+		sendErr = email.ErrNotConfigured
+	} else if htmlMailer, ok := s.mailer.(email.HTMLMailer); ok && strings.Contains(strings.ToLower(body), "<html") {
+		sendErr = htmlMailer.SendHTML(ctx, recipient, subject, body)
+	} else {
+		sendErr = s.mailer.Send(ctx, recipient, subject, body)
+	}
+	if sendErr != nil {
+		failedAt := time.Now().UTC()
+		errorMessage := sendErr.Error()
+		if err := s.commRepo.UpdateMessageStatus(ctx, tenantID, msg.ID, domain.MessageStatusFailed, nil, nil, nil, &failedAt, &errorMessage, nil, nil, nil); err != nil {
+			return fmt.Errorf("record failed email %s: %w", msg.ID, err)
+		}
+		msg.Status = domain.MessageStatusFailed
+		msg.FailedAt = &failedAt
+		msg.ErrorMessage = &errorMessage
+		return nil
+	}
+
+	sentAt := time.Now().UTC()
+	if err := s.commRepo.UpdateMessageStatus(ctx, tenantID, msg.ID, domain.MessageStatusSent, &sentAt, nil, nil, nil, nil, nil, nil, nil); err != nil {
+		return fmt.Errorf("update sent email %s: %w", msg.ID, err)
+	}
+	msg.Status = domain.MessageStatusSent
+	msg.SentAt = &sentAt
+	return nil
+}
+
 // ---------------------------------------------------------------------------
 // RSVP Reminders
 // ---------------------------------------------------------------------------
@@ -634,6 +671,9 @@ func (s *CommunicationService) SendRSVPReminders(ctx context.Context, tenantID, 
 	if !template.IsActive {
 		return nil, domain.ErrTemplateInactive
 	}
+	if err := validateRSVPReminderTemplate(template); err != nil {
+		return nil, err
+	}
 
 	candidates, err := s.commRepo.ListRSVPReminderCandidates(ctx, tenantID, eventID)
 	if err != nil {
@@ -670,7 +710,11 @@ func (s *CommunicationService) SendRSVPReminders(ctx context.Context, tenantID, 
 		}
 		var invitation *domain.Invitation
 		if s.invitationRepo != nil {
-			invitation, _ = s.invitationRepo.GetByEventAndGuest(ctx, eventID, candidate.GuestID)
+			invitation, err = s.invitationRepo.GetByIDForTenant(ctx, candidate.InvitationID, tenantID)
+			if err != nil {
+				result.Skipped = append(result.Skipped, domain.RSVPReminderSkip{GuestID: candidate.GuestID, FullName: candidate.FullName, Reason: "undangan tidak ditemukan"})
+				continue
+			}
 		}
 
 		vars := BuildRenderVariables(guest, event, invitation, s.baseURL)
@@ -697,7 +741,11 @@ func (s *CommunicationService) SendRSVPReminders(ctx context.Context, tenantID, 
 			msg.Subject = &subject
 		}
 
-		if err := s.commRepo.CreateMessage(ctx, msg); err != nil {
+		if err := s.commRepo.CreateRSVPReminderMessage(ctx, msg, req.Force); err != nil {
+			if errors.Is(err, domain.ErrRSVPReminderThrottled) {
+				result.Skipped = append(result.Skipped, domain.RSVPReminderSkip{GuestID: candidate.GuestID, FullName: candidate.FullName, Reason: "sudah menerima pengingat dalam 24 jam terakhir"})
+				continue
+			}
 			return nil, fmt.Errorf("create reminder message for guest %s: %w", candidate.GuestID, err)
 		}
 
@@ -709,12 +757,34 @@ func (s *CommunicationService) SendRSVPReminders(ctx context.Context, tenantID, 
 			if err := s.dispatchWhatsApp(ctx, tenantID, msg, phone, renderedBody); err != nil {
 				return nil, err
 			}
+		} else if template.Channel == domain.ChannelEmail {
+			recipient := ""
+			if guest.Email != nil {
+				recipient = strings.TrimSpace(*guest.Email)
+			}
+			subject := ""
+			if msg.Subject != nil {
+				subject = *msg.Subject
+			}
+			if err := s.dispatchEmail(ctx, tenantID, msg, recipient, subject, renderedBody); err != nil {
+				return nil, err
+			}
 		}
 
 		result.Messages = append(result.Messages, msg)
 	}
 
 	return result, nil
+}
+
+func validateRSVPReminderTemplate(template *domain.CommunicationTemplate) error {
+	if template.Type != domain.MsgTypeRSVPFollowUp {
+		return fmt.Errorf("%w: RSVP reminder template must have type %q", domain.ErrInvalidMessageType, domain.MsgTypeRSVPFollowUp)
+	}
+	if template.Channel != domain.ChannelWhatsApp && template.Channel != domain.ChannelEmail {
+		return fmt.Errorf("%w: RSVP reminders support WhatsApp and email only", domain.ErrInvalidChannel)
+	}
+	return nil
 }
 
 // filterRSVPReminderCandidates applies the requested subset, the anti-spam

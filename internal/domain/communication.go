@@ -231,12 +231,13 @@ type MessageListParams struct {
 
 // Communication errors
 var (
-	ErrTemplateNotFound   = NewDomainError("template not found")
-	ErrCampaignNotFound   = NewDomainError("campaign not found")
-	ErrMessageNotFound    = NewDomainError("message not found")
-	ErrInvalidChannel     = NewDomainError("invalid communication channel")
-	ErrInvalidMessageType = NewDomainError("invalid message type")
-	ErrTemplateInactive   = NewDomainError("template is inactive")
-	ErrEmptyRecipientList = NewDomainError("empty recipient list")
-	ErrCampaignStarted    = NewDomainError("campaign has already started")
+	ErrTemplateNotFound      = NewDomainError("template not found")
+	ErrCampaignNotFound      = NewDomainError("campaign not found")
+	ErrMessageNotFound       = NewDomainError("message not found")
+	ErrInvalidChannel        = NewDomainError("invalid communication channel")
+	ErrInvalidMessageType    = NewDomainError("invalid message type")
+	ErrTemplateInactive      = NewDomainError("template is inactive")
+	ErrEmptyRecipientList    = NewDomainError("empty recipient list")
+	ErrCampaignStarted       = NewDomainError("campaign has already started")
+	ErrRSVPReminderThrottled = NewDomainError("rsvp reminder throttled")
 )

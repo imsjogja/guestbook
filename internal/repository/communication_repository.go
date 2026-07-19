@@ -448,6 +448,65 @@ func (r *CommunicationRepository) CreateMessage(ctx context.Context, message *do
 	return nil
 }
 
+// CreateRSVPReminderMessage atomically claims the 24-hour reminder window
+// for a guest before inserting the message. The transaction-scoped advisory
+// lock also protects against duplicate sends from concurrent app instances.
+func (r *CommunicationRepository) CreateRSVPReminderMessage(ctx context.Context, message *domain.CommunicationMessage, force bool) error {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin rsvp reminder transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	lockKey := fmt.Sprintf("rsvp-reminder:%s:%s:%s", message.TenantID, message.EventID, message.GuestID)
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, lockKey); err != nil {
+		return fmt.Errorf("lock rsvp reminder: %w", err)
+	}
+
+	if !force {
+		var recent bool
+		err := tx.GetContext(ctx, &recent, `
+			SELECT EXISTS (
+				SELECT 1
+				FROM communication_messages
+				WHERE tenant_id = $1 AND event_id = $2 AND guest_id = $3
+				  AND type = $4
+				  AND status NOT IN ('failed', 'cancelled')
+				  AND created_at >= NOW() - INTERVAL '24 hours'
+			)
+		`, message.TenantID, message.EventID, message.GuestID, domain.MsgTypeRSVPFollowUp)
+		if err != nil {
+			return fmt.Errorf("check rsvp reminder throttle: %w", err)
+		}
+		if recent {
+			return domain.ErrRSVPReminderThrottled
+		}
+	}
+
+	if _, err := tx.NamedExecContext(ctx, `
+		INSERT INTO communication_messages (
+			id, tenant_id, campaign_id, event_id, guest_id, event_guest_id, invitation_id,
+			channel, type, subject, body, status,
+			sent_at, delivered_at, read_at, failed_at,
+			error_message, external_id, provider_http_status, cost,
+			created_at, updated_at
+		) VALUES (
+			:id, :tenant_id, :campaign_id, :event_id, :guest_id, :event_guest_id, :invitation_id,
+			:channel, :type, :subject, :body, :status,
+			:sent_at, :delivered_at, :read_at, :failed_at,
+			:error_message, :external_id, :provider_http_status, :cost,
+			:created_at, :updated_at
+		)
+	`, message); err != nil {
+		return fmt.Errorf("create rsvp reminder message: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit rsvp reminder message: %w", err)
+	}
+	return nil
+}
+
 // GetMessage retrieves a message by ID with tenant isolation.
 func (r *CommunicationRepository) GetMessage(ctx context.Context, tenantID, id uuid.UUID) (*domain.CommunicationMessage, error) {
 	var message domain.CommunicationMessage
@@ -706,10 +765,11 @@ func (r *CommunicationRepository) ListRSVPReminderCandidates(ctx context.Context
 		JOIN LATERAL (
 			SELECT inv.id, inv.status
 			FROM invitations inv
-			WHERE inv.event_id = eg.event_id
+			WHERE inv.tenant_id = eg.tenant_id
+			  AND inv.event_id = eg.event_id
 			  AND inv.guest_id = eg.guest_id
 			  AND inv.deleted_at IS NULL
-			  AND inv.status NOT IN ('expired', 'revoked')
+			  AND inv.status IN ('draft', 'sent', 'opened')
 			ORDER BY inv.created_at DESC
 			LIMIT 1
 		) i ON TRUE
