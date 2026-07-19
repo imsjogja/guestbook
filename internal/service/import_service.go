@@ -47,6 +47,17 @@ func (s *ImportService) CSVTemplate() []byte {
 // ImportCSV parses CSV content and bulk imports guests.
 // It supports UTF-8 BOM, comma and semicolon separators, and returns per-row error details.
 func (s *ImportService) ImportCSV(ctx context.Context, tenantID, createdBy uuid.UUID, content []byte) (*domain.GuestImportResult, error) {
+	return s.importCSV(ctx, tenantID, createdBy, content, false)
+}
+
+// ImportCSVForEvent imports guests for an event roster. Existing tenant guests
+// are reused instead of being reported as duplicates; the event roster owns
+// the event-specific association.
+func (s *ImportService) ImportCSVForEvent(ctx context.Context, tenantID, createdBy uuid.UUID, content []byte) (*domain.GuestImportResult, error) {
+	return s.importCSV(ctx, tenantID, createdBy, content, true)
+}
+
+func (s *ImportService) importCSV(ctx context.Context, tenantID, createdBy uuid.UUID, content []byte, reuseExisting bool) (*domain.GuestImportResult, error) {
 	content = stripBOM(content)
 
 	// Detect separator: try comma first, then semicolon
@@ -120,6 +131,7 @@ func (s *ImportService) ImportCSV(ctx context.Context, tenantID, createdBy uuid.
 	}
 
 	// Check duplicates against existing database
+	var reusedGuestIDs []uuid.UUID
 	if len(validGuests) > 0 {
 		var phones, emails []string
 		for _, g := range validGuests {
@@ -140,18 +152,27 @@ func (s *ImportService) ImportCSV(ctx context.Context, tenantID, createdBy uuid.
 		var uniqueGuests []*domain.Guest
 		for i, g := range validGuests {
 			var dupErrors []string
+			duplicateIDs := make(map[uuid.UUID]struct{})
 			if g.Phone != nil && *g.Phone != "" {
 				if dupID, ok := duplicates["phone:"+*g.Phone]; ok {
 					dupErrors = append(dupErrors, fmt.Sprintf("Phone number already exists (guest ID: %s)", dupID))
+					duplicateIDs[dupID] = struct{}{}
 				}
 			}
 			if g.Email != nil && *g.Email != "" {
 				if dupID, ok := duplicates["email:"+*g.Email]; ok {
 					dupErrors = append(dupErrors, fmt.Sprintf("Email already exists (guest ID: %s)", dupID))
+					duplicateIDs[dupID] = struct{}{}
 				}
 			}
 
 			if len(dupErrors) > 0 {
+				if reuseExisting && len(duplicateIDs) == 1 {
+					for duplicateID := range duplicateIDs {
+						reusedGuestIDs = append(reusedGuestIDs, duplicateID)
+					}
+					continue
+				}
 				// Find the corresponding row in results
 				for j := range rows {
 					if rows[j].RowNum == i+2 { // approximate mapping
@@ -209,9 +230,15 @@ func (s *ImportService) ImportCSV(ctx context.Context, tenantID, createdBy uuid.
 	}
 
 	result.SuccessCount = len(finalGuests)
-	result.ImportedGuestIDs = make([]uuid.UUID, 0, len(finalGuests))
+	if reuseExisting {
+		result.SuccessCount += len(reusedGuestIDs)
+	}
+	result.ImportedGuestIDs = make([]uuid.UUID, 0, len(finalGuests)+len(reusedGuestIDs))
 	for _, guest := range finalGuests {
 		result.ImportedGuestIDs = append(result.ImportedGuestIDs, guest.ID)
+	}
+	if reuseExisting {
+		result.ImportedGuestIDs = append(result.ImportedGuestIDs, reusedGuestIDs...)
 	}
 	return &result, nil
 }

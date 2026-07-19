@@ -84,11 +84,21 @@ func (s *EventGuestService) ImportCSV(ctx context.Context, tenantID, eventID, us
 	if _, err := s.eventRepo.GetByIDForTenant(ctx, eventID, tenantID); err != nil {
 		return nil, fmt.Errorf("import event guests: %w", err)
 	}
-	result, err := s.guestSvc.ImportCSV(ctx, tenantID, userID, content)
+	result, err := s.guestSvc.ImportCSVForEvent(ctx, tenantID, userID, content)
 	if err != nil {
 		return nil, err
 	}
+	seenGuestIDs := make(map[uuid.UUID]struct{}, len(result.ImportedGuestIDs))
 	for _, guestID := range result.ImportedGuestIDs {
+		if _, seen := seenGuestIDs[guestID]; seen {
+			continue
+		}
+		seenGuestIDs[guestID] = struct{}{}
+		if _, err := s.repo.GetByEventAndGuest(ctx, tenantID, eventID, guestID); err == nil {
+			continue
+		} else if err != domain.ErrNotFound {
+			return nil, fmt.Errorf("check imported event guest: %w", err)
+		}
 		item := &domain.EventGuest{
 			Base: domain.NewBase(), TenantID: tenantID, EventID: eventID, GuestID: guestID,
 			Status: domain.EventGuestStatusActive, Source: domain.EventGuestSourceImport,

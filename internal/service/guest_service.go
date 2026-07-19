@@ -194,6 +194,12 @@ func (s *GuestService) ImportCSV(ctx context.Context, tenantID, createdBy uuid.U
 	return s.importService.ImportCSV(ctx, tenantID, createdBy, content)
 }
 
+// ImportCSVForEvent reuses existing tenant guests and imports their event
+// roster associations without weakening tenant-level duplicate protection.
+func (s *GuestService) ImportCSVForEvent(ctx context.Context, tenantID, createdBy uuid.UUID, content []byte) (*domain.GuestImportResult, error) {
+	return s.importService.ImportCSVForEvent(ctx, tenantID, createdBy, content)
+}
+
 // Search searches guests by name, phone, or email.
 func (s *GuestService) Search(ctx context.Context, tenantID uuid.UUID, query string) ([]*domain.Guest, error) {
 	params := domain.GuestListParams{
