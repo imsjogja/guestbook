@@ -300,12 +300,12 @@ func parseRow(record []string, headerMap map[string]int, rowNum int) domain.Gues
 		RowNum:              rowNum,
 		FullName:            get("full_name", "name", "fullname"),
 		Nickname:            get("nickname", "nick_name"),
-		Phone:               get("phone", "phone_number", "mobile"),
+		Phone:               normalizeImportPhone(get("phone", "phone_number", "mobile")),
 		Email:               get("email", "email_address"),
 		Address:             get("address"),
 		City:                get("city"),
 		Country:             get("country"),
-		GuestType:           get("guest_type", "type", "guesttype"),
+		GuestType:           normalizeImportGuestType(get("guest_type", "type", "guesttype")),
 		Segment:             get("segment", "category"),
 		Institution:         get("institution", "organization", "company", "org"),
 		Title:               get("title"),
@@ -315,6 +315,58 @@ func parseRow(record []string, headerMap map[string]int, rowNum int) domain.Gues
 		DietaryRestrictions: get("dietary_restrictions", "dietary", "diet"),
 		Allergies:           get("allergies"),
 		Notes:               get("notes", "remarks", "comments"),
+	}
+}
+
+func normalizeImportPhone(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+
+	var digits strings.Builder
+	for _, char := range value {
+		if char >= '0' && char <= '9' {
+			digits.WriteRune(char)
+		}
+	}
+	cleaned := digits.String()
+	if cleaned == "" {
+		return value
+	}
+	if strings.HasPrefix(value, "+") {
+		return "+" + cleaned
+	}
+	if strings.HasPrefix(cleaned, "00") {
+		return "+" + strings.TrimPrefix(cleaned, "00")
+	}
+	if strings.HasPrefix(cleaned, "0") {
+		return "+62" + strings.TrimPrefix(cleaned, "0")
+	}
+	if strings.HasPrefix(cleaned, "62") {
+		return "+" + cleaned
+	}
+	return "+" + cleaned
+}
+
+func normalizeImportGuestType(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "regular", "general", "umum", "tamu":
+		return domain.GuestTypeGeneral
+	case "vip":
+		return domain.GuestTypeVIP
+	case "vvip":
+		return domain.GuestTypeVVIP
+	case "family", "keluarga":
+		return domain.GuestTypeFamily
+	case "friend", "teman":
+		return domain.GuestTypeFriend
+	case "colleague", "rekan", "rekan kerja":
+		return domain.GuestTypeColleague
+	case "vendor":
+		return domain.GuestTypeVendor
+	default:
+		return strings.ToLower(strings.TrimSpace(value))
 	}
 }
 
