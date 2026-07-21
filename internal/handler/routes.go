@@ -72,11 +72,17 @@ func RegisterRoutes(
 	tenantCommunicationWrite := middleware.RequirePermission(rbacService, domain.PermCommunicationWrite)
 	tenantSettingsRead := middleware.RequirePermission(rbacService, domain.PermSettingsRead)
 	tenantSettingsWrite := middleware.RequirePermission(rbacService, domain.PermSettingsWrite)
+	tenantGuestRead := middleware.RequirePermission(rbacService, domain.PermGuestRead)
+	tenantGuestWrite := middleware.RequirePermission(rbacService, domain.PermGuestWrite)
+	tenantGuestDelete := middleware.RequirePermission(rbacService, domain.PermGuestDelete)
+	tenantCommunicationRead := middleware.RequirePermission(rbacService, domain.PermCommunicationRead)
+	tenantMember := middleware.RequireRole(rbacService, rbac.AllRoles()...)
+	tenantOwnerOnly := middleware.RequireRole(rbacService, domain.RoleTenantOwner)
 	tenants.POST("", tenantHandler.Create)
 	tenants.GET("", tenantHandler.List)
-	tenants.GET("/:id", tenantHandler.Get)
+	tenants.GET("/:id", tenantHandler.Get, tenantMember)
 	tenants.GET("/:id/access", tenantHandler.Access, tenantTeamRead)
-	tenants.PATCH("/:id", tenantHandler.Update)
+	tenants.PATCH("/:id", tenantHandler.Update, tenantOwnerOnly)
 	tenants.GET("/:id/users", tenantHandler.ListUsers, tenantTeamRead)
 	tenants.POST("/:id/users", tenantHandler.AddUser, tenantTeamWrite)
 	tenants.DELETE("/:id/users/:userId", tenantHandler.RemoveUser, tenantTeamWrite)
@@ -85,25 +91,25 @@ func RegisterRoutes(
 	// Guest routes (protected, tenant-scoped).
 	// Tenants :id is the tenant ID; guest endpoints are nested under it.
 	guests := tenants.Group("/:id/guests")
-	guests.POST("", guestHandler.Create)
-	guests.GET("", guestHandler.List)
-	guests.GET("/search", guestHandler.Search)
-	guests.POST("/import", guestHandler.ImportCSV)
-	guests.GET("/import/template", guestHandler.DownloadTemplate)
-	guests.GET("/:guestId", guestHandler.Get)
-	guests.PATCH("/:guestId", guestHandler.Update)
-	guests.DELETE("/:guestId", guestHandler.Delete)
+	guests.POST("", guestHandler.Create, tenantGuestWrite)
+	guests.GET("", guestHandler.List, tenantGuestRead)
+	guests.GET("/search", guestHandler.Search, tenantGuestRead)
+	guests.POST("/import", guestHandler.ImportCSV, tenantGuestWrite)
+	guests.GET("/import/template", guestHandler.DownloadTemplate, tenantGuestRead)
+	guests.GET("/:guestId", guestHandler.Get, tenantGuestRead)
+	guests.PATCH("/:guestId", guestHandler.Update, tenantGuestWrite)
+	guests.DELETE("/:guestId", guestHandler.Delete, tenantGuestDelete)
 
 	// Household routes (protected, tenant-scoped).
 	households := tenants.Group("/:id/households")
-	households.POST("", householdHandler.Create)
-	households.GET("", householdHandler.List)
-	households.GET("/:householdId", householdHandler.Get)
-	households.PATCH("/:householdId", householdHandler.Update)
-	households.DELETE("/:householdId", householdHandler.Delete)
-	households.GET("/:householdId/members", householdHandler.ListMembers)
-	households.POST("/:householdId/members", householdHandler.AddMember)
-	households.DELETE("/:householdId/members/:guestId", householdHandler.RemoveMember)
+	households.POST("", householdHandler.Create, tenantGuestWrite)
+	households.GET("", householdHandler.List, tenantGuestRead)
+	households.GET("/:householdId", householdHandler.Get, tenantGuestRead)
+	households.PATCH("/:householdId", householdHandler.Update, tenantGuestWrite)
+	households.DELETE("/:householdId", householdHandler.Delete, tenantGuestDelete)
+	households.GET("/:householdId/members", householdHandler.ListMembers, tenantGuestRead)
+	households.POST("/:householdId/members", householdHandler.AddMember, tenantGuestWrite)
+	households.DELETE("/:householdId/members/:guestId", householdHandler.RemoveMember, tenantGuestDelete)
 
 	// Event routes (protected, tenant-scoped).
 	events := tenants.Group("/:id/events")
@@ -198,12 +204,12 @@ func RegisterRoutes(
 
 	// Communication template routes (protected, tenant-scoped).
 	templates := tenants.Group("/:id/templates")
-	templates.POST("", communicationHandler.CreateTemplate)
+	templates.POST("", communicationHandler.CreateTemplate, tenantCommunicationWrite)
 	templates.POST("/defaults", communicationHandler.GenerateDefaultTemplates, tenantCommunicationWrite)
-	templates.GET("", communicationHandler.ListTemplates)
-	templates.GET("/:templateId", communicationHandler.GetTemplate)
-	templates.PATCH("/:templateId", communicationHandler.UpdateTemplate)
-	templates.DELETE("/:templateId", communicationHandler.DeleteTemplate)
+	templates.GET("", communicationHandler.ListTemplates, tenantCommunicationRead)
+	templates.GET("/:templateId", communicationHandler.GetTemplate, tenantCommunicationRead)
+	templates.PATCH("/:templateId", communicationHandler.UpdateTemplate, tenantCommunicationWrite)
+	templates.DELETE("/:templateId", communicationHandler.DeleteTemplate, tenantCommunicationWrite)
 
 	// Tenant-scoped integration settings. Credentials are encrypted at rest and
 	// are never returned; PATCH applies them to the runtime client immediately.
@@ -227,10 +233,6 @@ func RegisterRoutes(
 	dashboard := events.Group("/:eventId/dashboard")
 	dashboard.GET("", dashboardHandler.GetDashboard, reportRead)
 	dashboard.GET("/stream", dashboardHandler.StreamDashboard, reportRead)
-
-	// RBAC middleware is injected but route-level enforcement
-	// is applied per-endpoint in production.
-	_ = rbacService
 
 	// ------------------------------------------------------------------
 	// HTMX fragment routes (protected, returns HTML partials)
