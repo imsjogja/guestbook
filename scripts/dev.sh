@@ -129,9 +129,9 @@ cmd_migrate() {
 cmd_seed() {
     log_info "Inserting demo data..."
     PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" \
-        -f migrations/999_seed_data.up.sql 2>/dev/null || {
+        -f seeds/seed_data.sql 2>/dev/null || {
         log_warn "Could not seed data automatically. Run manually:"
-        echo "  PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -f migrations/999_seed_data.up.sql"
+        echo "  PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -f seeds/seed_data.sql"
     }
     log_ok "Demo data inserted"
 }
