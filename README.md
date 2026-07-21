@@ -141,7 +141,7 @@ make docker-up
 docker compose exec app make migrate-up
 
 # Seed demo data
-docker compose exec -T db psql -U guestflow -d guestflow < migrations/999_seed_data.up.sql
+docker compose exec -T db psql -U guestflow -d guestflow < seeds/seed_data.sql
 
 # Access the application
 # API:     http://localhost:8080/api/v1
