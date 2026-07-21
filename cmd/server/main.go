@@ -25,11 +25,13 @@ import (
 	"guestflow/internal/email"
 	"guestflow/internal/handler"
 	"guestflow/internal/middleware"
+	"guestflow/internal/payment"
 	"guestflow/internal/rbac"
 	"guestflow/internal/repository"
 	"guestflow/internal/service"
 	"guestflow/internal/validator"
 	"guestflow/internal/whatsapp"
+	"guestflow/internal/worker"
 	appresponse "guestflow/pkg/response"
 
 	"github.com/jmoiron/sqlx"
@@ -197,6 +199,11 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 	// Communication
 	commRepo := repository.NewCommunicationRepository(db)
 
+	// Billing
+	planRepo := repository.NewPlanRepository(db)
+	subRepo := repository.NewSubscriptionRepository(db)
+	payRepo := repository.NewPaymentRepository(db)
+
 	// =====================================================================
 	// Dependency Injection: Layer 3 - Audit Service
 	// =====================================================================
@@ -205,11 +212,16 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 	// =====================================================================
 	// Dependency Injection: Layer 4 - Business Services
 	// =====================================================================
-	tenantService := service.NewTenantService(tenantRepo, tenantUserRepo, repository.NewUserRepository(db), auditService)
-	eventService := service.NewEventService(eventRepo, eventSessionRepo, eventLocationRepo, auditService)
+	// Billing & Payment
+	midtransClient := payment.NewClient(cfg.Midtrans.ServerKey, cfg.Midtrans.ClientKey, cfg.Midtrans.IsProduction)
+	billingService := service.NewBillingService(planRepo, subRepo, payRepo, tenantRepo, tenantUserRepo, repository.NewUserRepository(db), midtransClient, authMailer)
+
+	tenantService := service.NewTenantService(tenantRepo, tenantUserRepo, repository.NewUserRepository(db), auditService, billingService)
+
+	eventService := service.NewEventService(eventRepo, eventSessionRepo, eventLocationRepo, auditService, billingService)
 	eventAccessService := service.NewEventAccessService(eventRepo, eventMemberRepo, tenantUserRepo)
 	eventMemberService := service.NewEventMemberService(eventMemberRepo, eventRepo, tenantUserRepo, repository.NewUserRepository(db), auditService)
-	guestService := service.NewGuestService(guestRepo, checkinRepo, householdRepo, guestTagRepo, auditService)
+	guestService := service.NewGuestService(guestRepo, checkinRepo, householdRepo, guestTagRepo, auditService, billingService)
 	eventGuestService := service.NewEventGuestService(eventGuestRepo, eventRepo, guestRepo, guestService, auditService)
 	householdService := service.NewHouseholdService(householdRepo, auditService)
 	invitationService := service.NewInvitationService(invitationRepo, eventRepo, rsvpRepo, guestRepo, eventGuestRepo, auditService)
@@ -221,6 +233,8 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 	commService := service.NewCommunicationService(commRepo, guestRepo, eventGuestRepo, eventRepo, invitationRepo, whatsappClient, authMailer, cfg.App.PublicURL)
 	commService.SetWhatsAppConfigProvider(whatsappIntegrationService)
 	dashboardService := service.NewDashboardService(db, eventRepo, rsvpRepo, checkinRepo, commRepo, seatingRepo)
+
+	// Billing & Payment already instantiated above
 
 	// =====================================================================
 	// Dependency Injection: Layer 5 - HTTP Handlers
@@ -240,6 +254,7 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 	whatsappIntegrationHandler := handler.NewWhatsAppIntegrationHandler(whatsappIntegrationService)
 	dashboardHandler := handler.NewDashboardHandler(dashboardService)
 	invitationSiteHandler := handler.NewInvitationSiteHandler(invitationService, rsvpService, eventService, guestService)
+	billingHandler := handler.NewBillingHandler(billingService, midtransClient)
 
 	// =====================================================================
 	// Template Renderer for HTML views (required for HTMX fragments)
@@ -293,6 +308,7 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 		dashboardHandler,
 		invitationSiteHandler,
 		htmxDashboardHandler,
+		billingHandler,
 		jwtService,
 		rbacService,
 		eventAccessService,
@@ -303,6 +319,9 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 	e.GET("/health", handleHealth(db, redisClient))
 	e.GET("/healthz", handleHealth(db, redisClient))
 	e.GET("/ready", handleReadiness(db, redisClient))
+
+	// Start Background Cron Jobs
+	worker.StartCronJob(context.Background(), billingService)
 
 	return e
 }

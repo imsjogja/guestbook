@@ -17,6 +17,7 @@ type EventService struct {
 	eventSessionRepo  *repository.EventSessionRepository
 	eventLocationRepo *repository.EventLocationRepository
 	auditSvc          *audit.Service
+	billingSvc        *BillingService
 }
 
 // NewEventService creates a new EventService.
@@ -25,6 +26,7 @@ func NewEventService(
 	eventSessionRepo *repository.EventSessionRepository,
 	eventLocationRepo *repository.EventLocationRepository,
 	auditSvc *audit.Service,
+	billingSvc *BillingService,
 ) *EventService {
 	return &EventService{
 		eventRepo:         eventRepo,
@@ -36,6 +38,17 @@ func NewEventService(
 
 // Create creates a new event for a tenant. The event is created with status "draft".
 func (s *EventService) Create(ctx context.Context, tenantID, userID uuid.UUID, req domain.EventCreateRequest) (*domain.Event, error) {
+	// Check subscription quota
+	if s.billingSvc != nil {
+		subStatus, err := s.billingSvc.GetSubscriptionStatus(ctx, tenantID)
+		if err == nil && subStatus.MaxEvents != nil {
+			count, err := s.eventRepo.CountByTenant(ctx, tenantID, domain.EventFilter{})
+			if err == nil && count >= *subStatus.MaxEvents {
+				return nil, fmt.Errorf("quota exceeded: maximum number of events reached for your current plan")
+			}
+		}
+	}
+
 	// Validate event type.
 	if !domain.IsValidEventType(req.Type) {
 		return nil, fmt.Errorf("create event: %w", domain.ErrInvalidInput)

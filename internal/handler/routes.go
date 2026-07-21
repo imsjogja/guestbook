@@ -30,6 +30,7 @@ func RegisterRoutes(
 	dashboardHandler *DashboardHandler,
 	invitationSiteHandler *InvitationSiteHandler,
 	htmxDashboardHandler *HTMXDashboardHandler,
+	billingHandler *BillingHandler,
 	jwtService *auth.JWTService,
 	rbacService *rbac.Service,
 	eventAccessService *service.EventAccessService,
@@ -49,6 +50,11 @@ func RegisterRoutes(
 	authGroup.POST("/reset-password", authHandler.ResetPassword)
 	authGroup.POST("/magic-link", authHandler.RequestMagicLink)
 	authGroup.POST("/magic-link/consume", authHandler.ConsumeMagicLink)
+
+	// Public billing routes (no tenant context required)
+	billingPublic := api.Group("/billing")
+	billingPublic.POST("/webhook", billingHandler.HandleWebhook) // Midtrans callback
+	billingPublic.GET("/plans", billingHandler.ListPlans)        // plan listing (no auth needed)
 
 	// Public RSVP submission route (no auth required - accessed by token).
 	api.POST("/rsvp", rsvpHandler.Submit)
@@ -216,6 +222,12 @@ func RegisterRoutes(
 	integrations := tenants.Group("/:id/integrations")
 	integrations.GET("/whatsapp", whatsappIntegrationHandler.Get, tenantSettingsRead)
 	integrations.PATCH("/whatsapp", whatsappIntegrationHandler.Update, tenantSettingsWrite)
+
+	// Billing routes (protected, tenant-scoped)
+	billing := protected.Group("/billing", middleware.TenantResolver(middleware.DefaultTenantResolverConfig(db)))
+	billing.GET("/subscription", billingHandler.GetSubscriptionStatus)
+	billing.POST("/checkout", billingHandler.Checkout)
+	billing.GET("/history", billingHandler.GetPaymentHistory)
 
 	// Communication message routes (protected, tenant-scoped, nested under events).
 	messages := events.Group("/:eventId/messages")

@@ -25,6 +25,7 @@ type Config struct {
 	CORS      CORSConfig      `mapstructure:"cors"`
 	Tenant    TenantConfig    `mapstructure:"tenant"`
 	RateLimit RateLimitConfig `mapstructure:"rate_limit"`
+	Midtrans  MidtransConfig  `mapstructure:"midtrans"`
 }
 
 // AppConfig contains general application settings.
@@ -156,6 +157,13 @@ type RateLimitConfig struct {
 	RequestsPerSecond float64       `mapstructure:"requests_per_second"`
 	Burst             int           `mapstructure:"burst"`
 	TTL               time.Duration `mapstructure:"ttl"`
+}
+
+// MidtransConfig contains Midtrans payment gateway settings.
+type MidtransConfig struct {
+	ServerKey    string `mapstructure:"server_key"`
+	ClientKey    string `mapstructure:"client_key"`
+	IsProduction bool   `mapstructure:"is_production"`
 }
 
 // ------------------------------------------------------------------------------
@@ -342,6 +350,9 @@ func bindEnvs(v *viper.Viper) {
 		{"log.format", "LOG_FORMAT"},
 		{"tenant.header", "TENANT_HEADER"},
 		{"tenant.default_subdomain", "TENANT_DEFAULT_SUBDOMAIN"},
+		{"midtrans.server_key", "MIDTRANS_SERVER_KEY"},
+		{"midtrans.client_key", "MIDTRANS_CLIENT_KEY"},
+		{"midtrans.is_production", "MIDTRANS_IS_PRODUCTION"},
 	}
 
 	for _, binding := range envBindings {

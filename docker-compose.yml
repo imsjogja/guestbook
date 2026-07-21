@@ -22,9 +22,9 @@ services:
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./migrations:/docker-entrypoint-initdb.d:ro
+
     ports:
-      - "5432:5432"
+      - "${HOST_DB_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U guestflow"]
       interval: 10s
@@ -113,6 +113,17 @@ services:
       WHATSAPP_API_URL: ${WHATSAPP_API_URL:-https://app.blastr.id/api/pub/send}
       WHATSAPP_ACCOUNT_TOKEN: ${WHATSAPP_ACCOUNT_TOKEN:-}
       WHATSAPP_SENDER_TOKEN: ${WHATSAPP_SENDER_TOKEN:-}
+      EMAIL_ENABLED: ${EMAIL_ENABLED:-false}
+      EMAIL_HOST: ${EMAIL_HOST:-}
+      EMAIL_PORT: ${EMAIL_PORT:-587}
+      EMAIL_USER: ${EMAIL_USER:-}
+      EMAIL_PASSWORD: ${EMAIL_PASSWORD:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-}
+      EMAIL_USE_TLS: ${EMAIL_USE_TLS:-true}
+      MIDTRANS_SERVER_KEY: ${MIDTRANS_SERVER_KEY:-}
+      MIDTRANS_CLIENT_KEY: ${MIDTRANS_CLIENT_KEY:-}
+      MIDTRANS_IS_PRODUCTION: ${MIDTRANS_IS_PRODUCTION:-false}
     ports:
       - "8080:8080"
     depends_on:
@@ -152,6 +163,14 @@ services:
       WHATSAPP_API_URL: ${WHATSAPP_API_URL:-https://app.blastr.id/api/pub/send}
       WHATSAPP_ACCOUNT_TOKEN: ${WHATSAPP_ACCOUNT_TOKEN:-}
       WHATSAPP_SENDER_TOKEN: ${WHATSAPP_SENDER_TOKEN:-}
+      EMAIL_ENABLED: ${EMAIL_ENABLED:-false}
+      EMAIL_HOST: ${EMAIL_HOST:-}
+      EMAIL_PORT: ${EMAIL_PORT:-587}
+      EMAIL_USER: ${EMAIL_USER:-}
+      EMAIL_PASSWORD: ${EMAIL_PASSWORD:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-}
+      EMAIL_USE_TLS: ${EMAIL_USE_TLS:-true}
     depends_on:
       db:
         condition: service_healthy
@@ -172,7 +191,7 @@ services:
     container_name: guestflow-nginx
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "${HOST_NGINX_PORT:-80}:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:

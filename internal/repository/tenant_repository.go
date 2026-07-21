@@ -122,6 +122,21 @@ func (r *TenantRepository) ListByUser(ctx context.Context, userID uuid.UUID) ([]
 	return tenants, nil
 }
 
+// ListActive lists all tenants that are in trial or active state.
+func (r *TenantRepository) ListActive(ctx context.Context) ([]*domain.Tenant, error) {
+	var tenants []*domain.Tenant
+	query := `
+		SELECT * FROM tenants
+		WHERE status IN ('trial', 'active')
+		  AND deleted_at IS NULL
+	`
+	err := r.db.SelectContext(ctx, &tenants, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list active tenants: %w", err)
+	}
+	return tenants, nil
+}
+
 // SoftDelete marks a tenant as deleted (soft-delete pattern).
 func (r *TenantRepository) SoftDelete(ctx context.Context, id uuid.UUID) error {
 	query := `

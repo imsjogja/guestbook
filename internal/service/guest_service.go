@@ -21,6 +21,7 @@ type GuestService struct {
 	tagRepo       *repository.GuestTagRepository
 	audit         *audit.Service
 	importService *ImportService
+	billingSvc    *BillingService
 }
 
 // GuestDetail is the tenant guest profile enriched with check-in history.
@@ -36,6 +37,7 @@ func NewGuestService(
 	householdRepo *repository.HouseholdRepository,
 	tagRepo *repository.GuestTagRepository,
 	auditSvc *audit.Service,
+	billingSvc *BillingService,
 ) *GuestService {
 	svc := &GuestService{
 		guestRepo:     guestRepo,
@@ -43,6 +45,7 @@ func NewGuestService(
 		householdRepo: householdRepo,
 		tagRepo:       tagRepo,
 		audit:         auditSvc,
+		billingSvc:    billingSvc,
 	}
 	// Import service is initialized with a reference back to the guest repo
 	svc.importService = NewImportService(guestRepo)
@@ -51,6 +54,17 @@ func NewGuestService(
 
 // Create creates a new guest after validating and checking for duplicates.
 func (s *GuestService) Create(ctx context.Context, tenantID, createdBy uuid.UUID, req domain.GuestCreateRequest) (*domain.Guest, error) {
+	// Check subscription quota
+	if s.billingSvc != nil {
+		subStatus, err := s.billingSvc.GetSubscriptionStatus(ctx, tenantID)
+		if err == nil && subStatus.MaxGuests != nil {
+			count, err := s.guestRepo.CountByTenant(ctx, domain.GuestListParams{TenantID: tenantID})
+			if err == nil && count >= *subStatus.MaxGuests {
+				return nil, fmt.Errorf("quota exceeded: maximum number of guests reached for your current plan")
+			}
+		}
+	}
+
 	// Normalize inputs
 	req.FullName = strings.TrimSpace(req.FullName)
 	req.Email = strings.TrimSpace(req.Email)

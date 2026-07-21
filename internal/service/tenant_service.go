@@ -21,6 +21,7 @@ type TenantService struct {
 	tenantUserRepo *repository.TenantUserRepository
 	userRepo       *repository.UserRepository
 	audit          *audit.Service
+	billingSvc     *BillingService
 }
 
 // NewTenantService creates a new TenantService.
@@ -29,12 +30,14 @@ func NewTenantService(
 	tenantUserRepo *repository.TenantUserRepository,
 	userRepo *repository.UserRepository,
 	audit *audit.Service,
+	billingSvc *BillingService,
 ) *TenantService {
 	return &TenantService{
 		tenantRepo:     tenantRepo,
 		tenantUserRepo: tenantUserRepo,
 		userRepo:       userRepo,
 		audit:          audit,
+		billingSvc:     billingSvc,
 	}
 }
 
@@ -209,6 +212,17 @@ func (s *TenantService) AddUser(ctx context.Context, tenantID, addedBy uuid.UUID
 	// Validate role.
 	if !domain.IsValidRole(req.Role) {
 		return domain.ErrInvalidRole
+	}
+
+	// Check subscription quota
+	if s.billingSvc != nil {
+		subStatus, err := s.billingSvc.GetSubscriptionStatus(ctx, tenantID)
+		if err == nil && subStatus.MaxTeamMembers != nil {
+			memberships, err := s.tenantUserRepo.ListByTenant(ctx, tenantID)
+			if err == nil && len(memberships) >= *subStatus.MaxTeamMembers {
+				return fmt.Errorf("quota exceeded: maximum number of team members reached for your current plan")
+			}
+		}
 	}
 
 	// Prevent assigning tenant_owner to a new member.

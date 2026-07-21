@@ -82,8 +82,9 @@ func TenantResolver(config TenantResolverConfig) echo.MiddlewareFunc {
 				return appresponse.Error(c, apperrors.InvalidTenant())
 			}
 
-			// Validate tenant exists and is active
-			valid, err := validateTenantExists(c.Request().Context(), config.DB, tenantID)
+			// Validate tenant exists and is active (unless it's a billing route)
+			isBillingRoute := strings.HasPrefix(c.Request().URL.Path, "/api/v1/billing/")
+			valid, err := validateTenantExists(c.Request().Context(), config.DB, tenantID, isBillingRoute)
 			if err != nil {
 				slog.ErrorContext(c.Request().Context(), "tenant validation query failed",
 					slog.String("error", err.Error()),
@@ -134,17 +135,23 @@ func MustGetTenantIDFromContext(ctx context.Context) (uuid.UUID, error) {
 }
 
 // validateTenantExists checks if a tenant with the given ID exists and has an
-// active status in the database.
-func validateTenantExists(ctx context.Context, db *sqlx.DB, tenantID uuid.UUID) (bool, error) {
+// active status in the database. If allowSuspended is true, 'suspended' status is also permitted.
+func validateTenantExists(ctx context.Context, db *sqlx.DB, tenantID uuid.UUID, allowSuspended bool) (bool, error) {
 	var exists bool
-	query := `
+	
+	statusCheck := "('active', 'trial')"
+	if allowSuspended {
+		statusCheck = "('active', 'trial', 'suspended')"
+	}
+
+	query := fmt.Sprintf(`
 		SELECT EXISTS(
 			SELECT 1 FROM tenants
 			WHERE id = $1
-			  AND status IN ('active', 'trial')
+			  AND status IN %s
 			  AND deleted_at IS NULL
 		)
-	`
+	`, statusCheck)
 	err := db.QueryRowContext(ctx, query, tenantID).Scan(&exists)
 	if err != nil {
 		return false, fmt.Errorf("failed to query tenant: %w", err)
@@ -169,6 +176,8 @@ func defaultTenantSkipper(c echo.Context) bool {
 		"/api/v1/auth/magic-link",
 		"/api/v1/auth/magic-link/consume",
 		"/api/v1/tenants",
+		"/api/v1/billing/plans",
+		"/api/v1/billing/webhook",
 	}
 
 	for _, pp := range publicPaths {

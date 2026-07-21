@@ -61,19 +61,19 @@ dev-hot:
 # ------------------------------------------------------------------------------
 docker-up:
 	@echo "Starting Docker services..."
-	docker-compose up --build -d
+	docker compose up --build -d
 
 docker-down:
 	@echo "Stopping Docker services..."
-	docker-compose down
+	docker compose down
 
 docker-logs:
 	@echo "Showing Docker logs..."
-	docker-compose logs -f app
+	docker compose logs -f app
 
 docker-clean:
 	@echo "Cleaning Docker resources..."
-	docker-compose down -v --remove-orphans
+	docker compose down -v --remove-orphans
 	docker system prune -f
 
 # ------------------------------------------------------------------------------

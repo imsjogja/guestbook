@@ -160,9 +160,7 @@ func prepareMigrationDir(command, srcDir string) (string, func(), error) {
 			if strings.HasSuffix(name, ".down.sql") {
 				continue
 			}
-			if strings.Contains(name, "seed_data") {
-				continue
-			}
+
 
 			srcPath := filepath.Join(srcDir, name)
 			dstPath := filepath.Join(tempDir, name)
