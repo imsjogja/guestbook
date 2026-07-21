@@ -541,6 +541,32 @@ docker compose up -d --scale worker=3
 - `GET /health` — Liveness probe
 - `GET /ready` — Readiness probe (checks DB + Redis)
 
+### GitHub Actions Auto-Deploy
+
+Production deploy berjalan otomatis setelah push ke branch utama:
+
+- Backend: `master` -> `/home/ubuntu/apps/guestflow/backend`
+- UI: `main` -> `/home/ubuntu/apps/guestflow/ui`
+
+Workflow menjalankan test terlebih dahulu. Jika lulus, workflow terhubung melalui SSH,
+menjalankan `git pull --ff-only`, rebuild image Docker, menjalankan migrasi backend,
+dan memverifikasi health check.
+
+Tambahkan secrets berikut pada **kedua repository** di GitHub melalui
+`Settings > Secrets and variables > Actions`:
+
+| Secret | Nilai |
+|--------|-------|
+| `DEPLOY_HOST` | `168.110.204.168` |
+| `DEPLOY_PORT` | `22` |
+| `DEPLOY_USER` | `ubuntu` |
+| `DEPLOY_SSH_KEY` | Isi private key SSH deployment |
+| `DEPLOY_KNOWN_HOSTS` | Output `ssh-keyscan -H 168.110.204.168` |
+
+`DEPLOY_SSH_KEY` dan `DEPLOY_KNOWN_HOSTS` tidak disimpan di repository. Workflow
+memakai `StrictHostKeyChecking=yes` agar koneksi hanya diteruskan ke host yang
+telah dipin pada secret.
+
 ---
 
 ## Testing
