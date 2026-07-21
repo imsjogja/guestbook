@@ -160,7 +160,10 @@ func prepareMigrationDir(command, srcDir string) (string, func(), error) {
 			if strings.HasSuffix(name, ".down.sql") {
 				continue
 			}
-
+			// Seed data is loaded separately and must not create a Goose version gap.
+			if name == "999_seed_data.up.sql" {
+				continue
+			}
 
 			srcPath := filepath.Join(srcDir, name)
 			dstPath := filepath.Join(tempDir, name)
