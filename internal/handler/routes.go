@@ -20,6 +20,7 @@ func RegisterRoutes(
 	eventMemberHandler *EventMemberHandler,
 	guestHandler *GuestHandler,
 	eventGuestHandler *EventGuestHandler,
+	guestGiftHandler *GuestGiftHandler,
 	householdHandler *HouseholdHandler,
 	invitationHandler *InvitationHandler,
 	rsvpHandler *RSVPHandler,
@@ -133,6 +134,9 @@ func RegisterRoutes(
 	rsvpWrite := middleware.RequireEventPermission(eventAccessService, domain.PermRSVPWrite)
 	checkinRead := middleware.RequireEventPermission(eventAccessService, domain.PermCheckinRead)
 	checkinWrite := middleware.RequireEventPermission(eventAccessService, domain.PermCheckinWrite)
+	giftRead := middleware.RequireEventPermission(eventAccessService, domain.PermGiftRead)
+	giftWrite := middleware.RequireEventPermission(eventAccessService, domain.PermGiftWrite)
+	giftDelete := middleware.RequireEventPermission(eventAccessService, domain.PermGiftDelete)
 	seatingRead := middleware.RequireEventPermission(eventAccessService, domain.PermSeatingRead)
 	seatingWrite := middleware.RequireEventPermission(eventAccessService, domain.PermSeatingWrite)
 	communicationRead := middleware.RequireEventPermission(eventAccessService, domain.PermCommunicationRead)
@@ -161,6 +165,12 @@ func RegisterRoutes(
 	eventGuests.GET("", eventGuestHandler.List, guestRead)
 	eventGuests.POST("/import", eventGuestHandler.ImportCSV, guestWrite)
 	eventGuests.DELETE("/:eventGuestId", eventGuestHandler.Cancel, guestDelete)
+
+	// Gift/angpau routes are event-scoped and keyed by the event guest roster.
+	gifts := events.Group("/:eventId/gifts")
+	gifts.GET("", guestGiftHandler.List, giftRead)
+	gifts.PATCH("/by-guest/:guestId", guestGiftHandler.Upsert, giftWrite)
+	gifts.DELETE("/by-guest/:guestId", guestGiftHandler.Delete, giftDelete)
 
 	// Invitation routes (protected, tenant-scoped, nested under events).
 	invitations := events.Group("/:eventId/invitations")

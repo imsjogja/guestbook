@@ -48,6 +48,7 @@ const (
 	EntityTypeInvitation = "invitation"
 	EntityTypeRSVP       = "rsvp"
 	EntityTypeCheckin    = "checkin"
+	EntityTypeGuestGift  = "guest_gift"
 	EntityTypeSetting    = "setting"
 	EntityTypeMembership = "membership"
 )

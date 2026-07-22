@@ -185,6 +185,7 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 	// Guest
 	guestRepo := repository.NewGuestRepository(db)
 	eventGuestRepo := repository.NewEventGuestRepository(db)
+	guestGiftRepo := repository.NewGuestGiftRepository(db)
 	householdRepo := repository.NewHouseholdRepository(db)
 	guestTagRepo := repository.NewGuestTagRepository(db)
 
@@ -223,6 +224,7 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 	eventMemberService := service.NewEventMemberService(eventMemberRepo, eventRepo, tenantUserRepo, repository.NewUserRepository(db), auditService)
 	guestService := service.NewGuestService(guestRepo, checkinRepo, householdRepo, guestTagRepo, auditService, billingService)
 	eventGuestService := service.NewEventGuestService(eventGuestRepo, eventRepo, guestRepo, guestService, auditService)
+	guestGiftService := service.NewGuestGiftService(guestGiftRepo, eventGuestRepo, auditService)
 	householdService := service.NewHouseholdService(householdRepo, auditService)
 	invitationService := service.NewInvitationService(invitationRepo, eventRepo, rsvpRepo, guestRepo, eventGuestRepo, auditService)
 	rsvpService := service.NewRSVPService(rsvpRepo, invitationRepo, eventRepo, eventGuestRepo, auditService)
@@ -245,6 +247,7 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 	eventMemberHandler := handler.NewEventMemberHandler(eventMemberService, eventAccessService)
 	guestHandler := handler.NewGuestHandler(guestService)
 	eventGuestHandler := handler.NewEventGuestHandler(eventGuestService)
+	guestGiftHandler := handler.NewGuestGiftHandler(guestGiftService)
 	householdHandler := handler.NewHouseholdHandler(householdService)
 	invitationHandler := handler.NewInvitationHandler(invitationService)
 	rsvpHandler := handler.NewRSVPHandler(rsvpService, invitationService)
@@ -298,6 +301,7 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 		eventMemberHandler,
 		guestHandler,
 		eventGuestHandler,
+		guestGiftHandler,
 		householdHandler,
 		invitationHandler,
 		rsvpHandler,

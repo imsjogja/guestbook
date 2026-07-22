@@ -692,7 +692,7 @@ Target: **Level 2** (Application handling sensitive data)
 - [ ] Self-service kiosk mode
 - [ ] Selfie check-in
 - [ ] Guest photo gallery
-- [ ] Gift and angpao management
+- [x] Gift and angpao management (event-scoped inline autosave on guest roster)
 - [ ] AI attendance prediction
 - [ ] Staffing recommendation
 - [ ] Vendor marketplace

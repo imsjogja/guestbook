@@ -20,6 +20,9 @@ const (
 	PermGuestDelete        = "guest:delete"
 	PermGuestImport        = "guest:import"
 	PermGuestExport        = "guest:export"
+	PermGiftRead           = "gift:read"
+	PermGiftWrite          = "gift:write"
+	PermGiftDelete         = "gift:delete"
 	PermEventRead          = "event:read"
 	PermEventWrite         = "event:write"
 	PermEventDelete        = "event:delete"
@@ -68,6 +71,7 @@ func AllPermissions() []string {
 		PermGuestDelete,
 		PermGuestImport,
 		PermGuestExport,
+		PermGiftRead, PermGiftWrite, PermGiftDelete,
 		PermEventRead,
 		PermEventWrite,
 		PermEventDelete,
@@ -100,6 +104,7 @@ func AllPermissions() []string {
 var RolePermissions = map[string][]string{
 	RoleTenantOwner: {
 		PermGuestRead, PermGuestWrite, PermGuestDelete, PermGuestImport, PermGuestExport,
+		PermGiftRead, PermGiftWrite, PermGiftDelete,
 		PermEventRead, PermEventWrite, PermEventDelete,
 		PermInvitationRead, PermInvitationWrite, PermInvitationSend,
 		PermRSVPRead, PermRSVPWrite,
@@ -115,6 +120,7 @@ var RolePermissions = map[string][]string{
 	},
 	RoleEventManager: {
 		PermGuestRead, PermGuestWrite, PermGuestDelete, PermGuestImport, PermGuestExport,
+		PermGiftRead, PermGiftWrite, PermGiftDelete,
 		PermEventRead, PermEventWrite, PermEventDelete,
 		PermInvitationRead, PermInvitationWrite, PermInvitationSend,
 		PermRSVPRead, PermRSVPWrite,
@@ -150,6 +156,7 @@ var RolePermissions = map[string][]string{
 	},
 	RoleGiftOfficer: {
 		PermGuestRead,
+		PermGiftRead, PermGiftWrite, PermGiftDelete,
 		PermEventRead,
 		PermReportRead,
 	},
