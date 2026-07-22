@@ -433,6 +433,42 @@ h3 { font-size: clamp(1.2rem, 2vw, 1.5rem); }
 .self-checkin-status.error { color: #EF4444; }
 .self-checkin-status.loading { color: var(--primary); }
 
+.self-checkin-success {
+    padding: 24px 0 18px;
+    text-align: center;
+}
+
+.self-checkin-success-icon {
+    width: 72px;
+    height: 72px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 16px;
+    border-radius: 50%;
+    background: #D1FAE5;
+    color: #059669;
+    animation: self-checkin-pop 0.35s ease-out;
+}
+
+.self-checkin-success h3 {
+    font-family: var(--font-body);
+    font-size: 1.25rem;
+    color: var(--success);
+    margin-bottom: 6px;
+}
+
+.self-checkin-success p {
+    color: var(--text-light);
+    font-size: 0.9375rem;
+}
+
+@keyframes self-checkin-pop {
+    0% { transform: scale(0.6); opacity: 0; }
+    70% { transform: scale(1.08); }
+    100% { transform: scale(1); opacity: 1; }
+}
+
 .self-checkin-manual {
     text-align: left;
     margin: 12px 0 16px;

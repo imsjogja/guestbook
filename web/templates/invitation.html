@@ -18,7 +18,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
 
     <!-- Styles -->
-    <link rel="stylesheet" href="/static/css/invitation.css?v=3">
+    <link rel="stylesheet" href="/static/css/invitation.css?v=4">
 
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E💌%3C/text%3E%3C/svg%3E">
@@ -286,12 +286,21 @@
                 {{ if eq .Language "id" }}Scan QR Acara{{ else }}Scan Event QR{{ end }}
             </button>
             <div class="self-checkin-panel" id="selfCheckinPanel" hidden>
-                <div class="self-checkin-camera-wrap">
+                <div class="self-checkin-camera-wrap" id="selfCheckinCameraWrap">
                     <video id="selfCheckinVideo" class="self-checkin-video" playsinline muted></video>
                     <div class="self-checkin-frame" aria-hidden="true"></div>
                 </div>
                 <p class="self-checkin-status" id="selfCheckinStatus" role="status"></p>
-                <div class="self-checkin-manual">
+                <div class="self-checkin-success" id="selfCheckinSuccess" role="status" hidden>
+                    <div class="self-checkin-success-icon" aria-hidden="true">
+                        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="m5 12 4 4L19 6"/>
+                        </svg>
+                    </div>
+                    <h3>{{ if eq .Language "id" }}Check-in berhasil{{ else }}Check-in successful{{ end }}</h3>
+                    <p id="selfCheckinSuccessMessage">{{ if eq .Language "id" }}Selamat datang di acara!{{ else }}Welcome to the event!{{ end }}</p>
+                </div>
+                <div class="self-checkin-manual" id="selfCheckinManual">
                     <label class="form-label" for="selfCheckinEventToken">{{ if eq .Language "id" }}Jika kamera tidak tersedia, masukkan token QR acara{{ else }}If camera is unavailable, enter the event QR token{{ end }}</label>
                     <div class="self-checkin-manual-row">
                         <input type="text" class="form-input" id="selfCheckinEventToken" autocomplete="off" placeholder="Token QR acara">
@@ -363,6 +372,6 @@
 </footer>
 
 <script src="/static/vendor/zxing-browser.min.js?v=1" defer></script>
-<script src="/static/js/invitation.js?v=4" defer></script>
+<script src="/static/js/invitation.js?v=5" defer></script>
 </body>
 </html>

@@ -114,7 +114,11 @@
     const selfCheckinStart = document.getElementById('selfCheckinStart');
     const selfCheckinPanel = document.getElementById('selfCheckinPanel');
     const selfCheckinVideo = document.getElementById('selfCheckinVideo');
+    const selfCheckinCameraWrap = document.getElementById('selfCheckinCameraWrap');
     const selfCheckinStatus = document.getElementById('selfCheckinStatus');
+    const selfCheckinSuccess = document.getElementById('selfCheckinSuccess');
+    const selfCheckinSuccessMessage = document.getElementById('selfCheckinSuccessMessage');
+    const selfCheckinManual = document.getElementById('selfCheckinManual');
     const selfCheckinStop = document.getElementById('selfCheckinStop');
     const selfCheckinManualSubmit = document.getElementById('selfCheckinManualSubmit');
     const selfCheckinEventToken = document.getElementById('selfCheckinEventToken');
@@ -143,6 +147,17 @@
             selfCheckinVideo.pause();
             selfCheckinVideo.srcObject = null;
         }
+    }
+
+    function showSelfCheckinSuccess(message) {
+        stopSelfCheckinCamera();
+        if (selfCheckinCameraWrap) selfCheckinCameraWrap.hidden = true;
+        if (selfCheckinManual) selfCheckinManual.hidden = true;
+        if (selfCheckinStop) selfCheckinStop.hidden = true;
+        if (selfCheckinStatus) selfCheckinStatus.hidden = true;
+        if (selfCheckinSuccessMessage && message) selfCheckinSuccessMessage.textContent = message;
+        if (selfCheckinSuccess) selfCheckinSuccess.hidden = false;
+        if (selfCheckinStart) selfCheckinStart.disabled = true;
     }
 
     function eventTokenFromValue(value) {
@@ -177,14 +192,11 @@
             });
             const result = await response.json().catch(() => ({}));
             if (response.ok) {
-                stopSelfCheckinCamera();
-                setSelfCheckinStatus('Check-in berhasil. Selamat datang di acara!', 'success');
-                if (selfCheckinStart) selfCheckinStart.disabled = true;
+                showSelfCheckinSuccess('Check-in berhasil. Selamat datang di acara!');
                 return;
             }
             if (response.status === 409) {
-                stopSelfCheckinCamera();
-                setSelfCheckinStatus('Tamu ini sudah tercatat check-in sebelumnya.', 'success');
+                showSelfCheckinSuccess('Tamu ini sudah tercatat check-in sebelumnya.');
                 return;
             }
             setSelfCheckinStatus(result.error || 'Check-in gagal. Pastikan QR acara sesuai undangan ini.', 'error');
