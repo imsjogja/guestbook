@@ -183,7 +183,7 @@
         }
 
         selfCheckinBusy = true;
-        setSelfCheckinStatus('Memproses check-in...', 'loading');
+        setSelfCheckinStatus('Memproses check-in...', 'is-loading');
         try {
             const response = await fetch(selfCheckinSection.dataset.api || '/api/v1/self-checkin', {
                 method: 'POST',
@@ -211,7 +211,7 @@
         if (!selfCheckinPanel || !selfCheckinVideo) return;
         if (selfCheckinScanning) return;
         selfCheckinPanel.hidden = false;
-        setSelfCheckinStatus('Meminta akses kamera...', 'loading');
+        setSelfCheckinStatus('Meminta akses kamera...', 'is-loading');
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
             setSelfCheckinStatus('Kamera tidak didukung browser ini. Gunakan input token QR di bawah.', 'error');
             return;

@@ -431,7 +431,7 @@ h3 { font-size: clamp(1.2rem, 2vw, 1.5rem); }
 
 .self-checkin-status.success { color: var(--success); font-weight: 600; }
 .self-checkin-status.error { color: #EF4444; }
-.self-checkin-status.loading { color: var(--primary); }
+.self-checkin-status.is-loading { color: var(--primary); }
 
 .self-checkin-success {
     padding: 24px 0 18px;
