@@ -207,7 +207,7 @@ events through `event_members`.
 - `rsvp_officer`: event-scoped access for invitations, RSVP, and communication.
 - `registration_officer`: event-scoped access for guest registration and check-in.
 - `usher`: event-scoped access for check-in and seating visibility.
-- `gift_officer`: event-scoped read access for guest and event reporting.
+- `gift_officer`: event-scoped CRUD access for gift records plus guest and event reporting.
 - `viewer`: event-scoped read-only access; can view event assignments when assigned.
 
 Existing event-scoped memberships are backfilled during migration `1001_event_members`.
@@ -692,7 +692,7 @@ Target: **Level 2** (Application handling sensitive data)
 - [ ] Self-service kiosk mode
 - [ ] Selfie check-in
 - [ ] Guest photo gallery
-- [x] Gift and angpao management (event-scoped inline autosave on guest roster)
+- [x] Gift and angpao management (event-scoped CRUD menu plus inline cash autosave on guest roster)
 - [ ] AI attendance prediction
 - [ ] Staffing recommendation
 - [ ] Vendor marketplace

@@ -28,10 +28,6 @@ func (s *GuestGiftService) List(ctx context.Context, tenantID, eventID uuid.UUID
 }
 
 func (s *GuestGiftService) Upsert(ctx context.Context, tenantID, eventID, guestID, userID uuid.UUID, req domain.GuestGiftUpsertRequest) (*domain.GuestGift, error) {
-	if req.Amount < 1 {
-		return nil, fmt.Errorf("amount must be greater than zero: %w", domain.ErrInvalidInput)
-	}
-
 	eventGuest, err := s.eventGuestRepo.GetByEventAndGuest(ctx, tenantID, eventID, guestID)
 	if err != nil {
 		return nil, fmt.Errorf("get event guest for gift: %w", err)
@@ -46,6 +42,12 @@ func (s *GuestGiftService) Upsert(ctx context.Context, tenantID, eventID, guestI
 	}
 	if !domain.IsValidGuestGiftType(giftType) {
 		return nil, fmt.Errorf("invalid gift type: %w", domain.ErrInvalidInput)
+	}
+	if req.Amount != nil && *req.Amount < 1 {
+		return nil, fmt.Errorf("amount must be greater than zero: %w", domain.ErrInvalidInput)
+	}
+	if (giftType == domain.GuestGiftTypeCash || giftType == domain.GuestGiftTypeTransfer) && req.Amount == nil {
+		return nil, fmt.Errorf("amount is required for cash or transfer gifts: %w", domain.ErrInvalidInput)
 	}
 
 	notes := strings.TrimSpace(req.Notes)

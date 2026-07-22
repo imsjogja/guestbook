@@ -20,7 +20,7 @@ type GuestGift struct {
 	EventID      uuid.UUID  `db:"event_id" json:"event_id"`
 	GuestID      uuid.UUID  `db:"guest_id" json:"guest_id"`
 	EventGuestID uuid.UUID  `db:"event_guest_id" json:"event_guest_id"`
-	Amount       int64      `db:"amount" json:"amount"`
+	Amount       *int64     `db:"amount" json:"amount,omitempty"`
 	GiftType     string     `db:"gift_type" json:"gift_type"`
 	Notes        *string    `db:"notes" json:"notes,omitempty"`
 	ReceivedAt   time.Time  `db:"received_at" json:"received_at"`
@@ -28,7 +28,7 @@ type GuestGift struct {
 }
 
 type GuestGiftUpsertRequest struct {
-	Amount   int64  `json:"amount" validate:"required,min=1"`
+	Amount   *int64 `json:"amount,omitempty"`
 	GiftType string `json:"gift_type,omitempty"`
 	Notes    string `json:"notes,omitempty"`
 }
