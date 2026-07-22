@@ -3,10 +3,10 @@
 
 ALTER TABLE events
     ADD COLUMN IF NOT EXISTS self_checkin_token VARCHAR(64)
-    DEFAULT encode(gen_random_bytes(24), 'hex');
+    DEFAULT replace(gen_random_uuid()::text, '-', '');
 
 UPDATE events
-SET self_checkin_token = encode(gen_random_bytes(24), 'hex')
+SET self_checkin_token = replace(gen_random_uuid()::text, '-', '')
 WHERE self_checkin_token IS NULL;
 
 ALTER TABLE events
