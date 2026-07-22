@@ -119,6 +119,7 @@
     const selfCheckinManualSubmit = document.getElementById('selfCheckinManualSubmit');
     const selfCheckinEventToken = document.getElementById('selfCheckinEventToken');
     let selfCheckinStream = null;
+    let selfCheckinControls = null;
     let selfCheckinScanning = false;
     let selfCheckinBusy = false;
 
@@ -130,6 +131,10 @@
 
     function stopSelfCheckinCamera() {
         selfCheckinScanning = false;
+        if (selfCheckinControls) {
+            selfCheckinControls.stop();
+            selfCheckinControls = null;
+        }
         if (selfCheckinStream) {
             selfCheckinStream.getTracks().forEach(track => track.stop());
             selfCheckinStream = null;
@@ -192,40 +197,57 @@
 
     async function startSelfCheckinCamera() {
         if (!selfCheckinPanel || !selfCheckinVideo) return;
+        if (selfCheckinScanning) return;
         selfCheckinPanel.hidden = false;
         setSelfCheckinStatus('Meminta akses kamera...', 'loading');
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
             setSelfCheckinStatus('Kamera tidak didukung browser ini. Gunakan input token QR di bawah.', 'error');
             return;
         }
-        if (!('BarcodeDetector' in window)) {
-            setSelfCheckinStatus('Scanner otomatis belum didukung browser ini. Gunakan input token QR di bawah.', 'error');
-            return;
-        }
         try {
-            selfCheckinStream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: { ideal: 'environment' } },
-                audio: false
-            });
-            selfCheckinVideo.srcObject = selfCheckinStream;
-            await selfCheckinVideo.play();
             selfCheckinScanning = true;
             setSelfCheckinStatus('Arahkan kamera ke QR acara.', '');
-            const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
-            const scan = async () => {
-                if (!selfCheckinScanning || !selfCheckinVideo || selfCheckinVideo.readyState < 2) return;
-                try {
-                    const codes = await detector.detect(selfCheckinVideo);
-                    if (codes.length > 0 && codes[0].rawValue) {
-                        await submitSelfCheckin(codes[0].rawValue);
-                        return;
+            if ('BarcodeDetector' in window) {
+                selfCheckinStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: { ideal: 'environment' } },
+                    audio: false
+                });
+                selfCheckinVideo.srcObject = selfCheckinStream;
+                await selfCheckinVideo.play();
+                const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+                const scan = async () => {
+                    if (!selfCheckinScanning || !selfCheckinVideo || selfCheckinVideo.readyState < 2) return;
+                    try {
+                        const codes = await detector.detect(selfCheckinVideo);
+                        if (codes.length > 0 && codes[0].rawValue) {
+                            await submitSelfCheckin(codes[0].rawValue);
+                            return;
+                        }
+                    } catch (_) {
+                        // Keep scanning; transient camera frames can fail detection.
                     }
-                } catch (_) {
-                    // Keep scanning; transient camera frames can fail detection.
-                }
-                if (selfCheckinScanning) window.setTimeout(scan, 250);
-            };
-            void scan();
+                    if (selfCheckinScanning) window.setTimeout(scan, 250);
+                };
+                void scan();
+                return;
+            }
+
+            if (window.ZXingBrowser && window.ZXingBrowser.BrowserQRCodeReader) {
+                const reader = new window.ZXingBrowser.BrowserQRCodeReader();
+                selfCheckinControls = await reader.decodeFromVideoDevice(
+                    undefined,
+                    selfCheckinVideo,
+                    (result) => {
+                        if (result && result.getText()) {
+                            void submitSelfCheckin(result.getText());
+                        }
+                    }
+                );
+                return;
+            }
+
+            selfCheckinScanning = false;
+            setSelfCheckinStatus('Scanner QR tidak tersedia. Gunakan input token QR di bawah.', 'error');
         } catch (err) {
             stopSelfCheckinCamera();
             const message = err && err.name === 'NotAllowedError'
