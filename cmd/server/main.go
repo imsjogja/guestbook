@@ -243,7 +243,7 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 	// =====================================================================
 	authHandler := handler.NewAuthHandler(authService)
 	tenantHandler := handler.NewTenantHandler(tenantService)
-	eventHandler := handler.NewEventHandler(eventService, eventAccessService)
+	eventHandler := handler.NewEventHandler(eventService, eventAccessService, cfg.App.PublicURL)
 	eventMemberHandler := handler.NewEventMemberHandler(eventMemberService, eventAccessService)
 	guestHandler := handler.NewGuestHandler(guestService)
 	eventGuestHandler := handler.NewEventGuestHandler(eventGuestService)
@@ -256,7 +256,7 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 	communicationHandler := handler.NewCommunicationHandler(commService)
 	whatsappIntegrationHandler := handler.NewWhatsAppIntegrationHandler(whatsappIntegrationService)
 	dashboardHandler := handler.NewDashboardHandler(dashboardService)
-	invitationSiteHandler := handler.NewInvitationSiteHandler(invitationService, rsvpService, eventService, guestService)
+	invitationSiteHandler := handler.NewInvitationSiteHandler(invitationService, rsvpService, eventService, guestService, checkinService)
 	billingHandler := handler.NewBillingHandler(billingService, midtransClient)
 
 	// =====================================================================

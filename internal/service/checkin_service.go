@@ -112,6 +112,24 @@ func (s *CheckinService) ProcessManualSearch(ctx context.Context, tenantID, even
 	return s.performCheckin(ctx, tenantID, eventID, guest.ID, nil, officerID, req)
 }
 
+// ProcessSelfCheckin records a guest check-in from the public invitation page.
+// The invitation and event have already been resolved and validated by the handler.
+func (s *CheckinService) ProcessSelfCheckin(ctx context.Context, event *domain.Event, invitation *domain.Invitation, actualPax int) (*domain.Checkin, error) {
+	if event == nil || invitation == nil || event.ID != invitation.EventID {
+		return nil, fmt.Errorf("invitation does not belong to event: %w", domain.ErrInvalidInput)
+	}
+	if actualPax < 1 {
+		actualPax = 1
+	}
+	return s.performCheckin(ctx, event.TenantID, event.ID, invitation.GuestID, &invitation.ID, nil, domain.CheckinRequest{
+		Method:    domain.CheckinMethodSelfService,
+		ActualPax: actualPax,
+		Adults:    actualPax,
+		Children:  0,
+		Notes:     "Check-in mandiri dari laman undangan",
+	})
+}
+
 // ProcessWalkin handles walk-in registration and check-in.
 func (s *CheckinService) ProcessWalkin(ctx context.Context, tenantID, eventID uuid.UUID, officerID *uuid.UUID, req domain.WalkinRequest) (*domain.Checkin, error) {
 	// Validate input

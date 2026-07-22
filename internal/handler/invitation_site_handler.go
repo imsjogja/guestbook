@@ -10,10 +10,12 @@ import (
 	stderrors "errors"
 	"html/template"
 	"net/http"
+	"strings"
 	"time"
 
 	"guestflow/internal/domain"
 	"guestflow/internal/service"
+	appresponse "guestflow/pkg/response"
 
 	"github.com/labstack/echo/v4"
 	"github.com/skip2/go-qrcode"
@@ -25,6 +27,7 @@ type InvitationSiteHandler struct {
 	rsvpService       *service.RSVPService
 	eventService      *service.EventService
 	guestService      *service.GuestService
+	checkinService    *service.CheckinService
 }
 
 // NewInvitationSiteHandler creates a new invitation site handler.
@@ -33,12 +36,14 @@ func NewInvitationSiteHandler(
 	rsvpService *service.RSVPService,
 	eventService *service.EventService,
 	guestService *service.GuestService,
+	checkinService *service.CheckinService,
 ) *InvitationSiteHandler {
 	return &InvitationSiteHandler{
 		invitationService: invitationService,
 		rsvpService:       rsvpService,
 		eventService:      eventService,
 		guestService:      guestService,
+		checkinService:    checkinService,
 	}
 }
 
@@ -117,9 +122,64 @@ func (h *InvitationSiteHandler) RegisterSiteRoutes(e *echo.Echo) {
 	// Invitation microsite - the main guest-facing page
 	e.GET("/i/:token", h.ShowInvitation)
 	e.GET("/api/v1/qr/:token", h.ServeQRCode)
+	e.POST("/api/v1/self-checkin", h.SelfCheckin)
 
 	// Admin dashboard SPA (static HTML, JS handles API calls)
 	e.GET("/admin", h.ShowAdminDashboard)
+}
+
+type selfCheckinRequest struct {
+	InvitationToken string `json:"invitation_token"`
+	EventToken      string `json:"event_token"`
+	ActualPax       int    `json:"actual_pax"`
+}
+
+// SelfCheckin validates the guest invitation and the event display QR before
+// recording a public self-service check-in.
+func (h *InvitationSiteHandler) SelfCheckin(c echo.Context) error {
+	var req selfCheckinRequest
+	if err := c.Bind(&req); err != nil {
+		return appresponse.BadRequest(c, "invalid request body")
+	}
+	req.InvitationToken = strings.TrimSpace(req.InvitationToken)
+	req.EventToken = strings.TrimSpace(req.EventToken)
+	if req.InvitationToken == "" || req.EventToken == "" {
+		return appresponse.BadRequest(c, "invitation_token and event_token are required")
+	}
+	if req.ActualPax < 1 {
+		req.ActualPax = 1
+	}
+
+	invitation, err := h.invitationService.ValidateToken(c.Request().Context(), req.InvitationToken)
+	if err != nil {
+		return appresponse.BadRequest(c, "undangan tidak valid atau sudah tidak tersedia")
+	}
+	event, err := h.eventService.GetBySelfCheckinToken(c.Request().Context(), req.EventToken)
+	if err != nil {
+		return appresponse.BadRequest(c, "QR acara tidak valid")
+	}
+	if event.ID != invitation.EventID {
+		return appresponse.BadRequest(c, "QR acara tidak sesuai dengan undangan ini")
+	}
+	if event.Status == domain.EventStatusCancelled || event.Status == domain.EventStatusArchived {
+		return appresponse.BadRequest(c, "check-in mandiri tidak tersedia untuk acara ini")
+	}
+	if invitation.MaxPax > 0 && req.ActualPax > invitation.MaxPax {
+		return appresponse.BadRequest(c, "jumlah tamu melebihi kuota undangan")
+	}
+
+	checkin, err := h.checkinService.ProcessSelfCheckin(c.Request().Context(), event, invitation, req.ActualPax)
+	if err != nil {
+		switch {
+		case stderrors.Is(err, domain.ErrAlreadyExists):
+			return appresponse.Conflict(c, "undangan ini sudah check-in")
+		case stderrors.Is(err, domain.ErrInvalidInput):
+			return appresponse.BadRequest(c, err.Error())
+		default:
+			return appresponse.InternalError(c, "gagal memproses check-in mandiri")
+		}
+	}
+	return appresponse.Success(c, checkin)
 }
 
 // ServeQRCode returns a QR image for a valid invitation token.

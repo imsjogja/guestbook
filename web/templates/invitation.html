@@ -18,7 +18,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
 
     <!-- Styles -->
-    <link rel="stylesheet" href="/static/css/invitation.css">
+    <link rel="stylesheet" href="/static/css/invitation.css?v=3">
 
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E💌%3C/text%3E%3C/svg%3E">
@@ -270,6 +270,40 @@
     </div>
 </section>
 
+<!-- ==================== SELF CHECK-IN ==================== -->
+<section class="section self-checkin-section" id="self-checkin" data-invitation-token="{{ .InvitationToken }}" data-api="/api/v1/self-checkin">
+    <div class="container">
+        <div class="section-header">
+            <h2>{{ if eq .Language "id" }}Check-in Mandiri{{ else }}Self Check-in{{ end }}</h2>
+            <p>{{ if eq .Language "id" }}Scan QR acara yang ditampilkan panitia saat Anda tiba.{{ else }}Scan the event QR displayed by the organizer when you arrive.{{ end }}</p>
+        </div>
+
+        <div class="card self-checkin-card">
+            <p class="self-checkin-help">
+                {{ if eq .Language "id" }}Buka kamera dari tombol di bawah, lalu arahkan ke QR acara. QR undangan Anda tetap menjadi identitas tamu dan tidak dibagikan ke tamu lain.{{ else }}Open the camera below and point it at the event QR. Your invitation QR remains your guest identity and is not shared with other guests.{{ end }}
+            </p>
+            <button type="button" class="btn btn-primary btn-block" id="selfCheckinStart">
+                {{ if eq .Language "id" }}Scan QR Acara{{ else }}Scan Event QR{{ end }}
+            </button>
+            <div class="self-checkin-panel" id="selfCheckinPanel" hidden>
+                <div class="self-checkin-camera-wrap">
+                    <video id="selfCheckinVideo" class="self-checkin-video" playsinline muted></video>
+                    <div class="self-checkin-frame" aria-hidden="true"></div>
+                </div>
+                <p class="self-checkin-status" id="selfCheckinStatus" role="status"></p>
+                <div class="self-checkin-manual">
+                    <label class="form-label" for="selfCheckinEventToken">{{ if eq .Language "id" }}Jika kamera tidak tersedia, masukkan token QR acara{{ else }}If camera is unavailable, enter the event QR token{{ end }}</label>
+                    <div class="self-checkin-manual-row">
+                        <input type="text" class="form-input" id="selfCheckinEventToken" autocomplete="off" placeholder="Token QR acara">
+                        <button type="button" class="btn btn-secondary" id="selfCheckinManualSubmit">Kirim</button>
+                    </div>
+                </div>
+                <button type="button" class="btn btn-secondary btn-block" id="selfCheckinStop">{{ if eq .Language "id" }}Tutup kamera{{ else }}Close camera{{ end }}</button>
+            </div>
+        </div>
+    </div>
+</section>
+
 <!-- ==================== GALLERY ==================== -->
 {{ if .GalleryImages }}
 <section class="section" id="gallery">
@@ -328,6 +362,6 @@
     </div>
 </footer>
 
-<script src="/static/js/invitation.js?v=2" defer></script>
+<script src="/static/js/invitation.js?v=3" defer></script>
 </body>
 </html>

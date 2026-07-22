@@ -96,7 +96,14 @@ type Event struct {
 	PrivacyNotice     *string    `db:"privacy_notice" json:"privacy_notice,omitempty"`
 	GuestPolicy       *string    `db:"guest_policy" json:"guest_policy,omitempty"`
 	Settings          JSONMap    `db:"settings" json:"settings"`
+	SelfCheckinToken  string     `db:"self_checkin_token" json:"-"`
 	CreatedBy         uuid.UUID  `db:"created_by" json:"created_by"`
+}
+
+// EventSelfCheckinQR is the public QR payload exposed to authorized event managers.
+type EventSelfCheckinQR struct {
+	EventID uuid.UUID `json:"event_id"`
+	URL     string    `json:"url"`
 }
 
 // EventCreateRequest is the input payload for creating a new event.

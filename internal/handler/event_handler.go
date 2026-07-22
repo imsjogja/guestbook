@@ -3,6 +3,7 @@ package handler
 import (
 	stderrors "errors"
 	"strconv"
+	"strings"
 	"time"
 
 	"guestflow/internal/domain"
@@ -18,13 +19,15 @@ import (
 type EventHandler struct {
 	eventService       *service.EventService
 	eventAccessService *service.EventAccessService
+	publicURL          string
 }
 
 // NewEventHandler creates a new EventHandler.
-func NewEventHandler(eventService *service.EventService, eventAccessService *service.EventAccessService) *EventHandler {
+func NewEventHandler(eventService *service.EventService, eventAccessService *service.EventAccessService, publicURL string) *EventHandler {
 	return &EventHandler{
 		eventService:       eventService,
 		eventAccessService: eventAccessService,
+		publicURL:          strings.TrimRight(publicURL, "/"),
 	}
 }
 
@@ -105,6 +108,36 @@ func (h *EventHandler) Get(c echo.Context) error {
 	}
 
 	return response.Success(c, event)
+}
+
+// GetSelfCheckinQR returns the unique public QR URL for an event display.
+func (h *EventHandler) GetSelfCheckinQR(c echo.Context) error {
+	tenantID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return response.Error(c, apperrors.BadRequest("invalid tenant id"))
+	}
+	eventID, err := uuid.Parse(c.Param("eventId"))
+	if err != nil {
+		return response.Error(c, apperrors.BadRequest("invalid event id"))
+	}
+	event, err := h.eventService.Get(c.Request().Context(), tenantID, eventID)
+	if err != nil {
+		if stderrors.Is(err, domain.ErrEventNotFound) {
+			return response.Error(c, apperrors.NotFound("event"))
+		}
+		return response.Error(c, apperrors.WrapInternal(err, "failed to retrieve event"))
+	}
+	if event.SelfCheckinToken == "" {
+		return response.Error(c, apperrors.WrapInternal(domain.ErrInvalidInput, "event self check-in token is unavailable"))
+	}
+	baseURL := h.publicURL
+	if baseURL == "" {
+		baseURL = "https://guestflow.id"
+	}
+	return response.Success(c, domain.EventSelfCheckinQR{
+		EventID: event.ID,
+		URL:     baseURL + "/checkin/event/" + event.SelfCheckinToken,
+	})
 }
 
 // Update handles PATCH /api/v1/tenants/:id/events/:eventId - updates an event.

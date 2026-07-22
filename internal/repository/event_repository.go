@@ -91,6 +91,27 @@ func (r *EventRepository) GetByIDForTenant(ctx context.Context, id uuid.UUID, te
 	return &event, nil
 }
 
+// GetBySelfCheckinToken retrieves an event using its public display QR token.
+func (r *EventRepository) GetBySelfCheckinToken(ctx context.Context, token string) (*domain.Event, error) {
+	var event domain.Event
+	query := `
+		SELECT e.*, COALESCE((
+			SELECT COUNT(*) FROM event_guests eg
+			WHERE eg.event_id = e.id AND eg.tenant_id = e.tenant_id
+			  AND eg.status = 'active' AND eg.deleted_at IS NULL
+		), 0) AS guest_count
+		FROM events e
+		WHERE e.self_checkin_token = $1 AND e.deleted_at IS NULL
+	`
+	if err := r.db.GetContext(ctx, &event, query, token); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, domain.ErrEventNotFound
+		}
+		return nil, fmt.Errorf("failed to get event by self check-in token: %w", err)
+	}
+	return &event, nil
+}
+
 // ListByTenant lists all events for a tenant with optional filtering and pagination.
 func (r *EventRepository) ListByTenant(ctx context.Context, tenantID uuid.UUID, filter domain.EventFilter) ([]*domain.Event, error) {
 	var events []*domain.Event

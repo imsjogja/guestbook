@@ -109,6 +109,149 @@
         });
     }
 
+    // ==================== SELF CHECK-IN ====================
+    const selfCheckinSection = document.getElementById('self-checkin');
+    const selfCheckinStart = document.getElementById('selfCheckinStart');
+    const selfCheckinPanel = document.getElementById('selfCheckinPanel');
+    const selfCheckinVideo = document.getElementById('selfCheckinVideo');
+    const selfCheckinStatus = document.getElementById('selfCheckinStatus');
+    const selfCheckinStop = document.getElementById('selfCheckinStop');
+    const selfCheckinManualSubmit = document.getElementById('selfCheckinManualSubmit');
+    const selfCheckinEventToken = document.getElementById('selfCheckinEventToken');
+    let selfCheckinStream = null;
+    let selfCheckinScanning = false;
+    let selfCheckinBusy = false;
+
+    function setSelfCheckinStatus(message, type) {
+        if (!selfCheckinStatus) return;
+        selfCheckinStatus.textContent = message || '';
+        selfCheckinStatus.className = 'self-checkin-status ' + (type || '');
+    }
+
+    function stopSelfCheckinCamera() {
+        selfCheckinScanning = false;
+        if (selfCheckinStream) {
+            selfCheckinStream.getTracks().forEach(track => track.stop());
+            selfCheckinStream = null;
+        }
+        if (selfCheckinVideo) {
+            selfCheckinVideo.pause();
+            selfCheckinVideo.srcObject = null;
+        }
+    }
+
+    function eventTokenFromValue(value) {
+        const raw = String(value || '').trim();
+        if (!raw) return '';
+        try {
+            const parsed = new URL(raw, window.location.origin);
+            const match = parsed.pathname.match(/\/checkin\/event\/([^/]+)/i);
+            if (match) return decodeURIComponent(match[1]);
+        } catch (_) {
+            // Treat a non-URL value as a raw event token below.
+        }
+        return raw;
+    }
+
+    async function submitSelfCheckin(value) {
+        if (selfCheckinBusy || !selfCheckinSection) return;
+        const eventToken = eventTokenFromValue(value);
+        const invitationToken = selfCheckinSection.dataset.invitationToken || '';
+        if (!eventToken || !invitationToken) {
+            setSelfCheckinStatus('QR undangan tidak valid. Silakan buka kembali tautan undangan.', 'error');
+            return;
+        }
+
+        selfCheckinBusy = true;
+        setSelfCheckinStatus('Memproses check-in...', 'loading');
+        try {
+            const response = await fetch(selfCheckinSection.dataset.api || '/api/v1/self-checkin', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify({ invitation_token: invitationToken, event_token: eventToken, actual_pax: 1 })
+            });
+            const result = await response.json().catch(() => ({}));
+            if (response.ok) {
+                stopSelfCheckinCamera();
+                setSelfCheckinStatus('Check-in berhasil. Selamat datang di acara!', 'success');
+                if (selfCheckinStart) selfCheckinStart.disabled = true;
+                return;
+            }
+            if (response.status === 409) {
+                stopSelfCheckinCamera();
+                setSelfCheckinStatus('Tamu ini sudah tercatat check-in sebelumnya.', 'success');
+                return;
+            }
+            setSelfCheckinStatus(result.error || 'Check-in gagal. Pastikan QR acara sesuai undangan ini.', 'error');
+        } catch (_) {
+            setSelfCheckinStatus('Tidak dapat terhubung ke server. Periksa koneksi lalu coba lagi.', 'error');
+        } finally {
+            selfCheckinBusy = false;
+        }
+    }
+
+    async function startSelfCheckinCamera() {
+        if (!selfCheckinPanel || !selfCheckinVideo) return;
+        selfCheckinPanel.hidden = false;
+        setSelfCheckinStatus('Meminta akses kamera...', 'loading');
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            setSelfCheckinStatus('Kamera tidak didukung browser ini. Gunakan input token QR di bawah.', 'error');
+            return;
+        }
+        if (!('BarcodeDetector' in window)) {
+            setSelfCheckinStatus('Scanner otomatis belum didukung browser ini. Gunakan input token QR di bawah.', 'error');
+            return;
+        }
+        try {
+            selfCheckinStream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: { ideal: 'environment' } },
+                audio: false
+            });
+            selfCheckinVideo.srcObject = selfCheckinStream;
+            await selfCheckinVideo.play();
+            selfCheckinScanning = true;
+            setSelfCheckinStatus('Arahkan kamera ke QR acara.', '');
+            const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+            const scan = async () => {
+                if (!selfCheckinScanning || !selfCheckinVideo || selfCheckinVideo.readyState < 2) return;
+                try {
+                    const codes = await detector.detect(selfCheckinVideo);
+                    if (codes.length > 0 && codes[0].rawValue) {
+                        await submitSelfCheckin(codes[0].rawValue);
+                        return;
+                    }
+                } catch (_) {
+                    // Keep scanning; transient camera frames can fail detection.
+                }
+                if (selfCheckinScanning) window.setTimeout(scan, 250);
+            };
+            void scan();
+        } catch (err) {
+            stopSelfCheckinCamera();
+            const message = err && err.name === 'NotAllowedError'
+                ? 'Akses kamera ditolak. Izinkan kamera atau gunakan input token QR di bawah.'
+                : 'Kamera tidak dapat dibuka. Gunakan input token QR di bawah.';
+            setSelfCheckinStatus(message, 'error');
+        }
+    }
+
+    if (selfCheckinStart) selfCheckinStart.addEventListener('click', startSelfCheckinCamera);
+    if (selfCheckinStop) selfCheckinStop.addEventListener('click', () => {
+        stopSelfCheckinCamera();
+        if (selfCheckinPanel) selfCheckinPanel.hidden = true;
+        setSelfCheckinStatus('', '');
+    });
+    if (selfCheckinManualSubmit && selfCheckinEventToken) {
+        selfCheckinManualSubmit.addEventListener('click', () => submitSelfCheckin(selfCheckinEventToken.value));
+        selfCheckinEventToken.addEventListener('keydown', event => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                void submitSelfCheckin(selfCheckinEventToken.value);
+            }
+        });
+    }
+    window.addEventListener('pagehide', stopSelfCheckinCamera);
+
     // ==================== WISH FORM ====================
     const wishForm = document.getElementById('wishForm');
     if (wishForm) {

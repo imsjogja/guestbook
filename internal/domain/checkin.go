@@ -12,6 +12,8 @@ const (
 	CheckinMethodManual = "manual_search"
 	CheckinMethodWalkin = "walk_in"
 	CheckinMethodKiosk  = "kiosk"
+	// Self-service check-in uses the existing kiosk database method for compatibility.
+	CheckinMethodSelfService = CheckinMethodKiosk
 )
 
 // Check-in statuses

@@ -378,6 +378,83 @@ h3 { font-size: clamp(1.2rem, 2vw, 1.5rem); }
     object-fit: contain;
 }
 
+/* Self check-in */
+.self-checkin-section {
+    background: linear-gradient(180deg, var(--bg), var(--surface));
+}
+
+.self-checkin-card {
+    text-align: center;
+}
+
+.self-checkin-help {
+    color: var(--text-light);
+    font-size: 0.9375rem;
+    margin-bottom: 20px;
+}
+
+.self-checkin-panel[hidden] {
+    display: none;
+}
+
+.self-checkin-camera-wrap {
+    position: relative;
+    overflow: hidden;
+    margin: 20px 0 12px;
+    border-radius: 14px;
+    background: #111827;
+    aspect-ratio: 4 / 3;
+}
+
+.self-checkin-video {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+}
+
+.self-checkin-frame {
+    position: absolute;
+    inset: 18% 15%;
+    border: 2px solid rgba(255,255,255,0.9);
+    border-radius: 12px;
+    box-shadow: 0 0 0 999px rgba(0,0,0,0.18);
+    pointer-events: none;
+}
+
+.self-checkin-status {
+    min-height: 24px;
+    color: var(--text-light);
+    font-size: 0.875rem;
+    margin: 8px 0 18px;
+}
+
+.self-checkin-status.success { color: var(--success); font-weight: 600; }
+.self-checkin-status.error { color: #EF4444; }
+.self-checkin-status.loading { color: var(--primary); }
+
+.self-checkin-manual {
+    text-align: left;
+    margin: 12px 0 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+}
+
+.self-checkin-manual-row {
+    display: flex;
+    gap: 8px;
+}
+
+.self-checkin-manual-row .form-input {
+    min-width: 0;
+}
+
+@media (max-width: 480px) {
+    .self-checkin-manual-row {
+        flex-direction: column;
+    }
+}
+
 /* Timeline */
 .timeline {
     position: relative;

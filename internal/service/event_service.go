@@ -118,6 +118,15 @@ func (s *EventService) Get(ctx context.Context, tenantID, eventID uuid.UUID) (*d
 	return event, nil
 }
 
+// GetBySelfCheckinToken resolves the event QR token without requiring a tenant header.
+func (s *EventService) GetBySelfCheckinToken(ctx context.Context, token string) (*domain.Event, error) {
+	event, err := s.eventRepo.GetBySelfCheckinToken(ctx, token)
+	if err != nil {
+		return nil, fmt.Errorf("get event by self check-in token: %w", err)
+	}
+	return event, nil
+}
+
 // List lists events for a tenant with optional filtering and pagination.
 func (s *EventService) List(ctx context.Context, tenantID uuid.UUID, filter domain.EventFilter) ([]*domain.Event, int, error) {
 	// Normalize pagination defaults.

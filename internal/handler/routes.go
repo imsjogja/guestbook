@@ -146,6 +146,7 @@ func RegisterRoutes(
 	eventTeamRead := middleware.RequireEventPermission(eventAccessService, domain.PermEventTeamRead)
 	eventTeamWrite := middleware.RequireEventPermission(eventAccessService, domain.PermEventTeamWrite)
 	events.GET("/:eventId", eventHandler.Get, eventRead)
+	events.GET("/:eventId/checkin/qr", eventHandler.GetSelfCheckinQR, eventRead)
 	events.PATCH("/:eventId", eventHandler.Update, eventWrite)
 	events.DELETE("/:eventId", eventHandler.Delete, eventDelete)
 	events.POST("/:eventId/publish", eventHandler.Publish, eventWrite)
