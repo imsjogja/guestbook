@@ -34,6 +34,20 @@ func TestEventManagerUsesEventTeamPermission(t *testing.T) {
 	}
 }
 
+func TestOnlyTenantManagementRolesCanWriteEvents(t *testing.T) {
+	for _, role := range []string{RoleTenantOwner, RoleEventManager} {
+		if !hasPermission(RolePermissions[role], PermEventWrite) {
+			t.Errorf("role %q must be able to create and update events", role)
+		}
+	}
+
+	for _, role := range []string{RoleRSVPOfficer, RoleRegistrationOfficer, RoleUsher, RoleGiftOfficer, RoleViewer} {
+		if hasPermission(RolePermissions[role], PermEventWrite) {
+			t.Errorf("operational role %q must not be able to create or update events", role)
+		}
+	}
+}
+
 func TestAllPermissionsAreUnique(t *testing.T) {
 	seen := make(map[string]struct{})
 	for _, permission := range AllPermissions() {

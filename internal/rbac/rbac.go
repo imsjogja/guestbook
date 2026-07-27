@@ -74,6 +74,13 @@ func (s *Service) invalidateCache(tenantID, userID uuid.UUID) {
 	delete(s.cache, cacheKey(tenantID, userID))
 }
 
+// InvalidateUser clears cached permissions after a tenant membership changes.
+// Permission changes must take effect immediately instead of waiting for the
+// five-minute cache TTL to expire.
+func (s *Service) InvalidateUser(tenantID, userID uuid.UUID) {
+	s.invalidateCache(tenantID, userID)
+}
+
 // HasPermission checks if the user has the given permission within the tenant.
 func (s *Service) HasPermission(ctx context.Context, tenantID, userID uuid.UUID, permission string) (bool, error) {
 	_, perms, ok := s.getCachedPermissions(tenantID, userID)

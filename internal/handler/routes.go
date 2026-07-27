@@ -93,7 +93,9 @@ func RegisterRoutes(
 	tenants.POST("", tenantHandler.Create)
 	tenants.GET("", tenantHandler.List)
 	tenants.GET("/:id", tenantHandler.Get, tenantMember)
-	tenants.GET("/:id/access", tenantHandler.Access, tenantTeamRead)
+	// Every active tenant member can read their own effective access. Team
+	// management remains protected by team:read/team:write below.
+	tenants.GET("/:id/access", tenantHandler.Access, tenantMember)
 	tenants.PATCH("/:id", tenantHandler.Update, tenantOwnerOnly)
 	tenants.GET("/:id/users", tenantHandler.ListUsers, tenantTeamRead)
 	tenants.POST("/:id/users", tenantHandler.AddUser, tenantTeamWrite)

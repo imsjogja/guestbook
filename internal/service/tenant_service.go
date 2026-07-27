@@ -10,6 +10,7 @@ import (
 	"guestflow/internal/audit"
 	"guestflow/internal/auth"
 	"guestflow/internal/domain"
+	"guestflow/internal/rbac"
 	"guestflow/internal/repository"
 
 	"github.com/google/uuid"
@@ -22,6 +23,7 @@ type TenantService struct {
 	userRepo       *repository.UserRepository
 	audit          *audit.Service
 	billingSvc     *BillingService
+	rbacSvc        *rbac.Service
 }
 
 // NewTenantService creates a new TenantService.
@@ -31,6 +33,7 @@ func NewTenantService(
 	userRepo *repository.UserRepository,
 	audit *audit.Service,
 	billingSvc *BillingService,
+	rbacSvc *rbac.Service,
 ) *TenantService {
 	return &TenantService{
 		tenantRepo:     tenantRepo,
@@ -38,6 +41,7 @@ func NewTenantService(
 		userRepo:       userRepo,
 		audit:          audit,
 		billingSvc:     billingSvc,
+		rbacSvc:        rbacSvc,
 	}
 }
 
@@ -287,6 +291,9 @@ func (s *TenantService) AddUser(ctx context.Context, tenantID, addedBy uuid.UUID
 	if err := s.tenantUserRepo.UpsertActive(ctx, membership); err != nil {
 		return fmt.Errorf("add user: create membership: %w", err)
 	}
+	if s.rbacSvc != nil {
+		s.rbacSvc.InvalidateUser(tenantID, user.ID)
+	}
 
 	// Audit log.
 	_ = s.audit.LogWithUser(ctx, addedBy, tenantID, domain.AuditActionCreate, domain.EntityTypeMembership, tenantID, nil, map[string]interface{}{
@@ -312,6 +319,9 @@ func (s *TenantService) RemoveUser(ctx context.Context, tenantID, removedBy, tar
 
 	if err := s.tenantUserRepo.SoftDelete(ctx, tenantID, targetUserID); err != nil {
 		return fmt.Errorf("remove user: %w", err)
+	}
+	if s.rbacSvc != nil {
+		s.rbacSvc.InvalidateUser(tenantID, targetUserID)
 	}
 
 	// Audit log.
@@ -350,6 +360,9 @@ func (s *TenantService) UpdateUserRole(ctx context.Context, tenantID, changedBy,
 
 	if err := s.tenantUserRepo.UpdateRole(ctx, tenantID, targetUserID, newRole); err != nil {
 		return fmt.Errorf("update user role: %w", err)
+	}
+	if s.rbacSvc != nil {
+		s.rbacSvc.InvalidateUser(tenantID, targetUserID)
 	}
 
 	// Audit log.

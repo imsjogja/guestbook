@@ -217,7 +217,7 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 	midtransClient := payment.NewClient(cfg.Midtrans.ServerKey, cfg.Midtrans.ClientKey, cfg.Midtrans.IsProduction)
 	billingService := service.NewBillingService(planRepo, subRepo, payRepo, tenantRepo, tenantUserRepo, repository.NewUserRepository(db), midtransClient, authMailer)
 
-	tenantService := service.NewTenantService(tenantRepo, tenantUserRepo, repository.NewUserRepository(db), auditService, billingService)
+	tenantService := service.NewTenantService(tenantRepo, tenantUserRepo, repository.NewUserRepository(db), auditService, billingService, rbacService)
 
 	eventService := service.NewEventService(eventRepo, eventSessionRepo, eventLocationRepo, auditService, billingService)
 	eventAccessService := service.NewEventAccessService(eventRepo, eventMemberRepo, tenantUserRepo)
