@@ -286,26 +286,6 @@
     }
     window.addEventListener('pagehide', stopSelfCheckinCamera);
 
-    // ==================== WISH FORM ====================
-    const wishForm = document.getElementById('wishForm');
-    if (wishForm) {
-        wishForm.addEventListener('submit', async function(e) {
-            e.preventDefault();
-            const btn = wishForm.querySelector('button[type="submit"]');
-            const originalText = btn.textContent;
-
-            btn.disabled = true;
-            btn.textContent = '...';
-
-            // Simulate wish submission (endpoint not yet implemented)
-            await new Promise(r => setTimeout(r, 500));
-            showToast('Wish submitted! Thank you!', 'success');
-            wishForm.reset();
-            btn.disabled = false;
-            btn.textContent = originalText;
-        });
-    }
-
     // ==================== TOAST NOTIFICATIONS ====================
     function showToast(message, type) {
         let toast = document.querySelector('.toast');

@@ -37,6 +37,7 @@ func RegisterRoutes(
 	rbacService *rbac.Service,
 	eventAccessService *service.EventAccessService,
 	db *sqlx.DB,
+	campaignsEnabled bool,
 ) {
 	// Public API group.
 	api := e.Group("/api/v1")
@@ -252,12 +253,14 @@ func RegisterRoutes(
 	messages.GET("", communicationHandler.ListMessages, communicationRead)
 	messages.POST("/:messageId/retry", communicationHandler.RetryMessage, communicationSend)
 
-	// Communication campaign routes (protected, tenant-scoped, nested under events).
-	campaigns := events.Group("/:eventId/campaigns")
-	campaigns.POST("", communicationHandler.CreateCampaign, communicationWrite)
-	campaigns.GET("", communicationHandler.ListCampaigns, communicationRead)
-	campaigns.POST("/:campaignId/launch", communicationHandler.LaunchCampaign, communicationSend)
-	campaigns.POST("/:campaignId/cancel", communicationHandler.CancelCampaign, communicationWrite)
+	// Campaigns stay disabled by default while the feature is under research.
+	if campaignsEnabled {
+		campaigns := events.Group("/:eventId/campaigns")
+		campaigns.POST("", communicationHandler.CreateCampaign, communicationWrite)
+		campaigns.GET("", communicationHandler.ListCampaigns, communicationRead)
+		campaigns.POST("/:campaignId/launch", communicationHandler.LaunchCampaign, communicationSend)
+		campaigns.POST("/:campaignId/cancel", communicationHandler.CancelCampaign, communicationWrite)
+	}
 
 	// Dashboard routes (protected, tenant-scoped, nested under events).
 	dashboard := events.Group("/:eventId/dashboard")

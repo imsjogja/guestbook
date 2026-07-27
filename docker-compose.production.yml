@@ -101,31 +101,6 @@ services:
     networks:
       - guestflow
 
-  worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: final
-    restart: unless-stopped
-    env_file:
-      - .env
-    environment:
-      APP_ENV: production
-      DB_HOST: db
-      REDIS_HOST: redis
-      REDIS_POOL_SIZE: 32
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      gowa:
-        condition: service_started
-    entrypoint: ["/app/worker"]
-    command: ["-queues=all", "-concurrency=3"]
-    networks:
-      - guestflow
-
 volumes:
   guestflow_postgres_data:
   guestflow_redis_data:

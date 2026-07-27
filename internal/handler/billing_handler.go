@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	stderrors "errors"
 	"io"
 	"net/http"
 
@@ -96,8 +97,15 @@ func (h *BillingHandler) HandleWebhook(c echo.Context) error {
 	}
 
 	if err := h.billingSvc.HandleWebhookNotification(c.Request().Context(), payload, body); err != nil {
-		// Log but return 200 to prevent Midtrans retries on signature errors
 		c.Logger().Errorf("webhook error for order %s: %v", payload.OrderID, err)
+		switch {
+		case stderrors.Is(err, payment.ErrInvalidNotificationSignature):
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid notification signature"})
+		case stderrors.Is(err, domain.ErrNotFound):
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "payment order not found"})
+		default:
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "notification processing failed"})
+		}
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
@@ -117,5 +125,3 @@ func (h *BillingHandler) GetPaymentHistory(c echo.Context) error {
 	}
 	return appresponse.Success(c, payments)
 }
-
-

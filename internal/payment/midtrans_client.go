@@ -3,6 +3,7 @@ package payment
 
 import (
 	"crypto/sha512"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -11,6 +12,8 @@ import (
 	midtrans "github.com/midtrans/midtrans-go"
 	"github.com/midtrans/midtrans-go/snap"
 )
+
+var ErrInvalidNotificationSignature = errors.New("invalid midtrans notification signature")
 
 // Client wraps the Midtrans Snap API client.
 type Client struct {
@@ -62,11 +65,11 @@ func CreateOrderID(tenantID uuid.UUID) string {
 
 // CreateSnapRequest holds parameters for creating a Midtrans Snap transaction.
 type CreateSnapRequest struct {
-	OrderID     string
-	AmountIDR   int64
-	PlanName    string
-	BillingCycle string
-	TenantID    uuid.UUID
+	OrderID       string
+	AmountIDR     int64
+	PlanName      string
+	BillingCycle  string
+	TenantID      uuid.UUID
 	CustomerName  string
 	CustomerEmail string
 	CustomerPhone string

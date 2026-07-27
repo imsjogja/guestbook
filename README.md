@@ -464,8 +464,10 @@ All configuration is via environment variables. Copy `.env.example` to `.env` an
 | `WHATSAPP_GOWA_PASSWORD` | GOWA Basic Auth password | *(required when enabled)* |
 | `WHATSAPP_GOWA_WEBHOOK_SECRET` | HMAC secret shared with GOWA | *(required for receipts)* |
 | `GOWA_BASIC_AUTH` | Basic Auth accepted by the GOWA container | *(required in production)* |
+| `CAMPAIGNS_ENABLED` | Enable campaign/broadcast API (research feature) | `false` |
 
 Tenant-specific device IDs are managed through the integration endpoints above; server URL and authentication remain deployment-managed.
+Campaign/broadcast endpoints are disabled by default while the feature is under research. The production compose does not run the legacy worker until a real queue producer and job handlers are available; current invitation and message delivery paths run synchronously with persisted provider outcomes.
 
 See `.env.example` for full configuration options.
 

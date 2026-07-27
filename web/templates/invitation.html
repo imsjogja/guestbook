@@ -332,35 +332,6 @@
 </section>
 {{ end }}
 
-<!-- ==================== WISHES ==================== -->
-<section class="section bg-white" id="wishes">
-    <div class="container">
-        <div class="section-header">
-            <h2>{{ if eq .Language "id" }}Ucapan & Doa{{ else }}Wishes & Prayers{{ end }}</h2>
-        </div>
-
-        <div class="card">
-            <form id="wishForm">
-                <div class="form-group">
-                    <label class="form-label">{{ if eq .Language "id" }}Nama{{ else }}Name{{ end }}</label>
-                    <input type="text" class="form-input" placeholder="{{ if eq .Language "id" }}Nama Anda{{ else }}Your name{{ end }}" required>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">{{ if eq .Language "id" }}Ucapan{{ else }}Message{{ end }}</label>
-                    <textarea class="form-textarea" rows="3" placeholder="{{ if eq .Language "id" }}Tulis ucapan dan doa Anda...{{ else }}Write your wishes and prayers...{{ end }}" required></textarea>
-                </div>
-                <button type="submit" class="btn btn-primary btn-block">
-                    {{ if eq .Language "id" }}Kirim Ucapan{{ else }}Send Wish{{ end }}
-                </button>
-            </form>
-        </div>
-
-        <div id="wishesList" style="margin-top: 24px;">
-            <!-- Wishes will be loaded dynamically -->
-        </div>
-    </div>
-</section>
-
 <!-- ==================== FOOTER ==================== -->
 <footer class="footer">
     <div class="container">

@@ -220,6 +220,10 @@ func (s *BillingService) Checkout(ctx context.Context, tenantID, userID uuid.UUI
 
 // HandleWebhookNotification processes incoming Midtrans payment notifications.
 func (s *BillingService) HandleWebhookNotification(ctx context.Context, payload payment.NotificationPayload, rawBody []byte) error {
+	if payload.OrderID == "" || payload.GrossAmount == "" || payload.SignatureKey == "" {
+		return fmt.Errorf("missing required notification fields: %w", payment.ErrInvalidNotificationSignature)
+	}
+
 	// Verify signature
 	if !s.midtrans.VerifySignature(
 		payload.OrderID,
@@ -236,14 +240,17 @@ func (s *BillingService) HandleWebhookNotification(ctx context.Context, payload 
 			}
 		}
 		if !verified {
-			return fmt.Errorf("invalid midtrans signature for order %s", payload.OrderID)
+			return fmt.Errorf("invalid midtrans signature for order %s: %w", payload.OrderID, payment.ErrInvalidNotificationSignature)
 		}
 	}
 
 	// Get existing payment record
 	existingPay, err := s.payRepo.GetByMidtransOrderID(ctx, payload.OrderID)
 	if err != nil {
-		return fmt.Errorf("payment record not found for order %s", payload.OrderID)
+		return fmt.Errorf("payment record not found for order %s: %w", payload.OrderID, domain.ErrNotFound)
+	}
+	if existingPay.Status == domain.PaymentStatusSuccess {
+		return nil
 	}
 
 	// Parse raw notification into JSONMap
@@ -306,17 +313,9 @@ func (s *BillingService) activateSubscription(ctx context.Context, pay *domain.P
 		return fmt.Errorf("create subscription: %w", err)
 	}
 
-	// Extract VA number if available
-	vaNumber := ""
-	if len(notif.VANumbers) > 0 {
-		vaNumber = notif.VANumbers[0].VANumber
-	}
-
 	// Update payment record
-	if vaNumber != "" {
-		_ = s.payRepo.UpdateOnSuccess(ctx, orderID, txID, notif.PaymentType, sub.ID, rawMap)
-	} else {
-		_ = s.payRepo.UpdateOnSuccess(ctx, orderID, txID, notif.PaymentType, sub.ID, rawMap)
+	if err := s.payRepo.UpdateOnSuccess(ctx, orderID, txID, notif.PaymentType, sub.ID, rawMap); err != nil {
+		return fmt.Errorf("update payment after success: %w", err)
 	}
 
 	// Send email receipt asynchronously

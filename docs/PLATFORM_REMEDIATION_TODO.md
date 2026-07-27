@@ -23,12 +23,12 @@ Data kontak tamu adalah master tenant. Data operasional tamu harus selalu memaka
 ## P2 - Wajib Dibereskan Sebelum Klaim Fitur Lengkap
 
 - [x] Simpan pengaturan tenant dan preferensi notifikasi ke endpoint persisten.
-- [ ] Implementasikan export log; retry pesan sudah membuat attempt baru dari menu Riwayat Pesan.
-- [ ] Implementasikan ucapan/doa pada microsite atau sembunyikan form sampai endpoint tersedia.
-- [ ] Putuskan worker: implementasikan job nyata atau keluarkan dari deployment sampai queue dipakai.
-- [ ] Nonaktifkan endpoint campaign dengan feature flag jika UI memang masih disembunyikan untuk research.
-- [ ] Ubah webhook pembayaran agar kegagalan validasi/persistensi tidak selalu di-acknowledge sebagai sukses.
-- [ ] Hilangkan tombol 2FA, sesi aktif, upload avatar/logo, dan Hubungi Sales sampai backend tersedia atau implementasikan endpointnya.
+- [x] Implementasikan export log; retry pesan sudah membuat attempt baru dari menu Riwayat Pesan.
+- [x] Sembunyikan form ucapan/doa pada microsite sampai endpoint tersedia.
+- [x] Keluarkan worker dari deployment produksi sampai queue/job producer nyata tersedia; worker source lokal dipertahankan untuk riset queue.
+- [x] Nonaktifkan endpoint campaign dengan feature flag jika UI memang masih disembunyikan untuk research.
+- [x] Ubah webhook pembayaran agar kegagalan validasi/persistensi tidak selalu di-acknowledge sebagai sukses.
+- [x] Hilangkan tombol 2FA, sesi aktif, upload avatar/logo, dan Hubungi Sales sampai backend tersedia.
 
 ## Verifikasi Untuk Setiap Item
 

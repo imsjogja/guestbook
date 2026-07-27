@@ -319,6 +319,7 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 		rbacService,
 		eventAccessService,
 		db,
+		cfg.Features.CampaignsEnabled,
 	)
 
 	// Health checks (public)

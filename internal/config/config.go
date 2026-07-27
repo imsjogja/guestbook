@@ -26,6 +26,7 @@ type Config struct {
 	Tenant    TenantConfig    `mapstructure:"tenant"`
 	RateLimit RateLimitConfig `mapstructure:"rate_limit"`
 	Midtrans  MidtransConfig  `mapstructure:"midtrans"`
+	Features  FeatureConfig   `mapstructure:"features"`
 }
 
 // AppConfig contains general application settings.
@@ -165,6 +166,11 @@ type MidtransConfig struct {
 	IsProduction bool   `mapstructure:"is_production"`
 }
 
+// FeatureConfig controls platform capabilities that are not ready for general use.
+type FeatureConfig struct {
+	CampaignsEnabled bool `mapstructure:"campaigns_enabled"`
+}
+
 // ------------------------------------------------------------------------------
 // Loading
 // ------------------------------------------------------------------------------
@@ -280,6 +286,9 @@ func setDefaults(v *viper.Viper) {
 	// Tenant defaults
 	v.SetDefault("tenant.header", "X-Tenant-ID")
 	v.SetDefault("tenant.default_subdomain", "api")
+
+	// Feature defaults
+	v.SetDefault("features.campaigns_enabled", false)
 }
 
 // bindEnvs explicitly binds environment variables to config keys.
@@ -352,6 +361,7 @@ func bindEnvs(v *viper.Viper) {
 		{"midtrans.server_key", "MIDTRANS_SERVER_KEY"},
 		{"midtrans.client_key", "MIDTRANS_CLIENT_KEY"},
 		{"midtrans.is_production", "MIDTRANS_IS_PRODUCTION"},
+		{"features.campaigns_enabled", "CAMPAIGNS_ENABLED"},
 	}
 
 	for _, binding := range envBindings {
