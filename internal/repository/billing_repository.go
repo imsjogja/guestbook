@@ -269,7 +269,7 @@ func (r *PaymentRepository) GetByMidtransOrderID(ctx context.Context, orderID st
 }
 
 // UpdateOnSuccess updates payment after successful Midtrans notification.
-func (r *PaymentRepository) UpdateOnSuccess(ctx context.Context, orderID, transactionID, method string, subID uuid.UUID, rawNotif domain.JSONMap) error {
+func (r *PaymentRepository) UpdateOnSuccess(ctx context.Context, orderID, transactionID, method string, subID uuid.UUID, vaNumber *string, rawNotif domain.JSONMap) error {
 	notifJSON, _ := json.Marshal(rawNotif)
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE payments
@@ -277,11 +277,12 @@ func (r *PaymentRepository) UpdateOnSuccess(ctx context.Context, orderID, transa
 		    midtrans_transaction_id = $1,
 		    payment_method = $2,
 		    subscription_id = $3,
+		    va_number = $4,
 		    paid_at = NOW(),
-		    raw_notification = $4,
+		    raw_notification = $5,
 		    updated_at = NOW()
-		WHERE midtrans_order_id = $5
-	`, transactionID, method, subID, notifJSON, orderID)
+		WHERE midtrans_order_id = $6
+	`, transactionID, method, subID, vaNumber, notifJSON, orderID)
 	return err
 }
 

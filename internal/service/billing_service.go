@@ -313,8 +313,14 @@ func (s *BillingService) activateSubscription(ctx context.Context, pay *domain.P
 		return fmt.Errorf("create subscription: %w", err)
 	}
 
-	// Update payment record
-	if err := s.payRepo.UpdateOnSuccess(ctx, orderID, txID, notif.PaymentType, sub.ID, rawMap); err != nil {
+	// Extract VA number if available and persist the provider receipt details.
+	var vaNumber *string
+	if len(notif.VANumbers) > 0 && notif.VANumbers[0].VANumber != "" {
+		value := notif.VANumbers[0].VANumber
+		vaNumber = &value
+	}
+
+	if err := s.payRepo.UpdateOnSuccess(ctx, orderID, txID, notif.PaymentType, sub.ID, vaNumber, rawMap); err != nil {
 		return fmt.Errorf("update payment after success: %w", err)
 	}
 
