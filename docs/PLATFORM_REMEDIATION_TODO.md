@@ -35,10 +35,11 @@ Data kontak tamu adalah master tenant. Data operasional tamu harus selalu memaka
 - [ ] Unit test service/repository untuk aturan bisnis.
 - [ ] Contract test endpoint untuk status sukses dan gagal.
 - [ ] Browser E2E pada flow member, acara, roster, undangan, RSVP, check-in, seating, gift, dan delivery.
-- [ ] Smoke test Docker lokal dan live tanpa mengirim pesan eksternal kecuali eksplisit diminta.
+- [x] Smoke test Docker lokal dan live tanpa mengirim pesan eksternal kecuali eksplisit diminta.
 
 ## Status Batch Saat Ini
 
 - Batch 1: email manual, RSVP roster, check-in event scope, RSVP check-in search, dan message refresh.
 - Batch 2: household API/UI, resend invitation, email batch UI, dan pengaturan tenant.
 - Batch 3: public wishes, worker/queue, billing webhook, campaign flag, dan cleanup placeholder.
+- Batch 4: export log riwayat pesan, persistensi receipt Midtrans, dan unit test signature/status pembayaran.
