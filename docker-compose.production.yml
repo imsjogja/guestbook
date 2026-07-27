@@ -47,8 +47,6 @@ services:
       WHATSAPP_WEBHOOK_EVENTS: message.ack
     volumes:
       - guestflow_gowa_data:/app/storages
-    ports:
-      - "127.0.0.1:${HOST_GOWA_PORT:-13000}:3000"
     expose:
       - "3000"
     networks:
