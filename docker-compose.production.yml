@@ -113,6 +113,7 @@ services:
       APP_ENV: production
       DB_HOST: db
       REDIS_HOST: redis
+      REDIS_POOL_SIZE: 32
     depends_on:
       db:
         condition: service_healthy

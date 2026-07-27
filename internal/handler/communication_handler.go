@@ -242,6 +242,10 @@ func (h *CommunicationHandler) SendMessage(c echo.Context) error {
 			return appresponse.ValidationError(c, "Nomor WhatsApp tamu tidak valid")
 		case stderrors.Is(err, whatsapp.ErrNotConfigured):
 			return appresponse.ServiceUnavailable(c, "WhatsApp belum dikonfigurasi")
+		case stderrors.Is(err, email.ErrNotConfigured):
+			return appresponse.ServiceUnavailable(c, "Email belum dikonfigurasi")
+		case stderrors.Is(err, email.ErrInvalidRecipient):
+			return appresponse.ValidationError(c, "Alamat email tamu belum diisi atau tidak valid")
 		default:
 			return appresponse.InternalError(c, "Failed to send messages")
 		}
@@ -304,6 +308,44 @@ func (h *CommunicationHandler) ListMessages(c echo.Context) error {
 		Total:       total,
 		TotalPages:  totalPages,
 	})
+}
+
+// RetryMessage handles POST /api/v1/tenants/:id/events/:eventId/messages/:messageId/retry.
+func (h *CommunicationHandler) RetryMessage(c echo.Context) error {
+	tenantID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return appresponse.BadRequest(c, "Invalid tenant ID")
+	}
+	eventID, err := uuid.Parse(c.Param("eventId"))
+	if err != nil {
+		return appresponse.BadRequest(c, "Invalid event ID")
+	}
+	messageID, err := uuid.Parse(c.Param("messageId"))
+	if err != nil {
+		return appresponse.BadRequest(c, "Invalid message ID")
+	}
+
+	message, err := h.commService.RetryMessage(c.Request().Context(), tenantID, eventID, messageID)
+	if err != nil {
+		switch {
+		case stderrors.Is(err, domain.ErrMessageNotFound):
+			return appresponse.NotFound(c, "Message")
+		case stderrors.Is(err, domain.ErrInvalidInput), stderrors.Is(err, domain.ErrInvalidChannel):
+			return appresponse.ValidationError(c, err.Error())
+		case stderrors.Is(err, whatsapp.ErrPhoneMissing), stderrors.Is(err, whatsapp.ErrInvalidPhone):
+			return appresponse.ValidationError(c, "Nomor WhatsApp tamu belum diisi atau tidak valid")
+		case stderrors.Is(err, whatsapp.ErrNotConfigured):
+			return appresponse.ServiceUnavailable(c, "WhatsApp belum dikonfigurasi")
+		case stderrors.Is(err, email.ErrNotConfigured):
+			return appresponse.ServiceUnavailable(c, "Email belum dikonfigurasi")
+		case stderrors.Is(err, email.ErrInvalidRecipient):
+			return appresponse.ValidationError(c, "Alamat email tamu belum diisi atau tidak valid")
+		default:
+			return appresponse.InternalError(c, "Failed to retry message")
+		}
+	}
+
+	return appresponse.Created(c, message)
 }
 
 // ---------------------------------------------------------------------------

@@ -115,31 +115,58 @@ func (r *RSVPRepository) GetByEvent(ctx context.Context, tenantID, eventID uuid.
 	var args []interface{}
 	argIdx := 1
 
-	conditions = append(conditions, fmt.Sprintf("r.tenant_id = $%d", argIdx))
+	conditions = append(conditions, fmt.Sprintf("eg.tenant_id = $%d", argIdx))
 	args = append(args, tenantID)
 	argIdx++
 
-	conditions = append(conditions, fmt.Sprintf("r.event_id = $%d", argIdx))
+	conditions = append(conditions, fmt.Sprintf("eg.event_id = $%d", argIdx))
 	args = append(args, eventID)
 	argIdx++
+	conditions = append(conditions, "eg.status = 'active' AND eg.deleted_at IS NULL")
 
 	if status != "" {
-		conditions = append(conditions, fmt.Sprintf("r.status = $%d", argIdx))
+		conditions = append(conditions, fmt.Sprintf("COALESCE(r.status, 'no_response') = $%d", argIdx))
 		args = append(args, status)
 		argIdx++
 	}
 
 	query := `
 		SELECT
-			r.*,
-			g.full_name as guest_full_name,
-			g.email as guest_email,
-			g.phone as guest_phone,
+			COALESCE(r.id, i.id) AS id,
+			eg.tenant_id,
+			eg.event_id,
+			i.id AS invitation_id,
+			eg.guest_id,
+			eg.id AS event_guest_id,
+			COALESCE(r.status, 'no_response') AS status,
+			COALESCE(r.attending_pax, 0) AS attending_pax,
+			COALESCE(r.adults, 0) AS adults,
+			COALESCE(r.children, 0) AS children,
+			r.menu_choice,
+			r.allergies,
+			r.accessibility_needs,
+			r.transportation,
+			r.notes,
+			r.responded_at,
+			r.edited_at,
+			r.edited_by,
+			r.ip_address,
+			COALESCE(r.created_at, i.created_at) AS created_at,
+			COALESCE(r.updated_at, i.updated_at) AS updated_at,
+			NULL::timestamptz AS deleted_at,
+			(r.id IS NULL) AS virtual,
+			g.full_name AS guest_full_name,
+			g.email AS guest_email,
+			g.phone AS guest_phone,
 			g.guest_type
-		FROM rsvp_responses r
-		JOIN guests g ON r.guest_id = g.id
+		FROM event_guests eg
+		JOIN guests g ON g.id = eg.guest_id AND g.deleted_at IS NULL
+		JOIN invitations i ON i.tenant_id = eg.tenant_id
+			AND i.event_id = eg.event_id AND i.guest_id = eg.guest_id
+			AND i.deleted_at IS NULL
+		LEFT JOIN rsvp_responses r ON r.invitation_id = i.id
 		WHERE ` + strings.Join(conditions, " AND ") + `
-		ORDER BY r.responded_at DESC NULLS LAST, r.created_at DESC
+		ORDER BY r.responded_at DESC NULLS LAST, COALESCE(r.created_at, i.created_at) DESC
 		LIMIT $` + fmt.Sprintf("%d", argIdx) + ` OFFSET $` + fmt.Sprintf("%d", argIdx+1) + `
 	`
 	args = append(args, perPage, offset)
@@ -158,22 +185,28 @@ func (r *RSVPRepository) CountByEvent(ctx context.Context, tenantID, eventID uui
 	var args []interface{}
 	argIdx := 1
 
-	conditions = append(conditions, fmt.Sprintf("tenant_id = $%d", argIdx))
+	conditions = append(conditions, fmt.Sprintf("eg.tenant_id = $%d", argIdx))
 	args = append(args, tenantID)
 	argIdx++
 
-	conditions = append(conditions, fmt.Sprintf("event_id = $%d", argIdx))
+	conditions = append(conditions, fmt.Sprintf("eg.event_id = $%d", argIdx))
 	args = append(args, eventID)
 	argIdx++
+	conditions = append(conditions, "eg.status = 'active' AND eg.deleted_at IS NULL")
 
 	if status != "" {
-		conditions = append(conditions, fmt.Sprintf("status = $%d", argIdx))
+		conditions = append(conditions, fmt.Sprintf("COALESCE(r.status, 'no_response') = $%d", argIdx))
 		args = append(args, status)
 		argIdx++
 	}
 
 	query := `
-		SELECT COUNT(*) FROM rsvp_responses
+		SELECT COUNT(*)
+		FROM event_guests eg
+		JOIN invitations i ON i.tenant_id = eg.tenant_id
+			AND i.event_id = eg.event_id AND i.guest_id = eg.guest_id
+			AND i.deleted_at IS NULL
+		LEFT JOIN rsvp_responses r ON r.invitation_id = i.id
 		WHERE ` + strings.Join(conditions, " AND ")
 
 	var count int

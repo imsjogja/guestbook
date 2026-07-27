@@ -73,6 +73,7 @@ type RSVPResponseWithGuest struct {
 	GuestEmail    *string `db:"guest_email" json:"guest_email,omitempty"`
 	GuestPhone    *string `db:"guest_phone" json:"guest_phone,omitempty"`
 	GuestType     string  `db:"guest_type" json:"guest_type"`
+	Virtual       bool    `db:"virtual" json:"virtual"`
 }
 
 // RSVPDashboard stats.

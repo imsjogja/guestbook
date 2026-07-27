@@ -537,12 +537,99 @@ func (s *CommunicationService) SendMessage(ctx context.Context, tenantID, eventI
 			if err := s.dispatchWhatsApp(ctx, tenantID, msg, phone, renderedBody); err != nil {
 				return nil, err
 			}
+		} else if template.Channel == domain.ChannelEmail {
+			recipient := ""
+			if guest.Email != nil {
+				recipient = strings.TrimSpace(*guest.Email)
+			}
+			subject := ""
+			if msg.Subject != nil {
+				subject = *msg.Subject
+			}
+			if err := s.dispatchEmail(ctx, tenantID, msg, recipient, subject, renderedBody); err != nil {
+				return nil, err
+			}
 		}
 
 		messages = append(messages, msg)
 	}
 
 	return messages, nil
+}
+
+// RetryMessage creates a new delivery attempt from a failed message. The
+// original row remains immutable so operators can see the complete history.
+func (s *CommunicationService) RetryMessage(ctx context.Context, tenantID, eventID, messageID uuid.UUID) (*domain.CommunicationMessage, error) {
+	original, err := s.commRepo.GetMessage(ctx, tenantID, messageID)
+	if err != nil {
+		return nil, fmt.Errorf("get message for retry: %w", err)
+	}
+	if original.EventID != eventID {
+		return nil, domain.ErrMessageNotFound
+	}
+	if original.Status != domain.MessageStatusFailed {
+		return nil, fmt.Errorf("retry message: only failed messages can be retried: %w", domain.ErrInvalidInput)
+	}
+
+	eventGuest, err := s.eventGuestRepo.GetByEventAndGuest(ctx, tenantID, eventID, original.GuestID)
+	if err != nil {
+		return nil, fmt.Errorf("get event guest for retry: %w", err)
+	}
+	guest, err := s.guestRepo.GetByIDForTenant(ctx, tenantID, original.GuestID)
+	if err != nil {
+		return nil, fmt.Errorf("get guest for retry: %w", err)
+	}
+	if original.Channel == domain.ChannelWhatsApp {
+		if err := s.prepareWhatsApp(ctx, tenantID); err != nil {
+			return nil, err
+		}
+	}
+
+	now := time.Now().UTC()
+	attempt := &domain.CommunicationMessage{
+		Base:         domain.Base{ID: uuid.New(), CreatedAt: now, UpdatedAt: now},
+		TenantID:     tenantID,
+		CampaignID:   original.CampaignID,
+		EventID:      eventID,
+		GuestID:      original.GuestID,
+		EventGuestID: &eventGuest.ID,
+		InvitationID: original.InvitationID,
+		Channel:      original.Channel,
+		Type:         original.Type,
+		Subject:      original.Subject,
+		Body:         original.Body,
+		Status:       domain.MessageStatusQueued,
+	}
+	if err := s.commRepo.CreateMessage(ctx, attempt); err != nil {
+		return nil, fmt.Errorf("create retry message: %w", err)
+	}
+
+	switch original.Channel {
+	case domain.ChannelWhatsApp:
+		phone := ""
+		if guest.Phone != nil {
+			phone = *guest.Phone
+		}
+		if err := s.dispatchWhatsApp(ctx, tenantID, attempt, phone, attempt.Body); err != nil {
+			return nil, err
+		}
+	case domain.ChannelEmail:
+		recipient := ""
+		if guest.Email != nil {
+			recipient = strings.TrimSpace(*guest.Email)
+		}
+		subject := ""
+		if attempt.Subject != nil {
+			subject = *attempt.Subject
+		}
+		if err := s.dispatchEmail(ctx, tenantID, attempt, recipient, subject, attempt.Body); err != nil {
+			return nil, err
+		}
+	default:
+		return nil, fmt.Errorf("retry message: unsupported channel %q: %w", original.Channel, domain.ErrInvalidChannel)
+	}
+
+	return attempt, nil
 }
 
 // dispatchWhatsApp sends a rendered body to one recipient and records the

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"mime"
 	"net"
+	"net/mail"
 	"net/smtp"
 	"strings"
 	"time"
@@ -17,6 +18,7 @@ import (
 )
 
 var ErrNotConfigured = errors.New("email delivery is not configured")
+var ErrInvalidRecipient = errors.New("email recipient is invalid")
 
 // Mailer sends a plain-text email.
 type Mailer interface {
@@ -46,6 +48,11 @@ func (m *SMTPMailer) SendHTML(ctx context.Context, to, subject, body string) err
 }
 
 func (m *SMTPMailer) send(ctx context.Context, to, subject, body, contentType string) error {
+	recipient := strings.TrimSpace(to)
+	parsed, err := mail.ParseAddress(recipient)
+	if recipient == "" || err != nil || parsed.Address != recipient {
+		return fmt.Errorf("%w: %s", ErrInvalidRecipient, recipient)
+	}
 	if !m.cfg.Enabled {
 		return fmt.Errorf("%w: delivery is disabled", ErrNotConfigured)
 	}
@@ -60,7 +67,7 @@ func (m *SMTPMailer) send(ctx context.Context, to, subject, body, contentType st
 	address := fmt.Sprintf("%s:%d", m.cfg.Host, port)
 	dialer := &net.Dialer{Timeout: 20 * time.Second}
 	var conn net.Conn
-	var err error
+	err = nil
 	if port == 465 {
 		conn, err = tls.DialWithDialer(dialer, "tcp", address, &tls.Config{ServerName: m.cfg.Host, MinVersion: tls.VersionTLS12})
 	} else {

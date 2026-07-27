@@ -250,6 +250,7 @@ func RegisterRoutes(
 	messages := events.Group("/:eventId/messages")
 	messages.POST("/send", communicationHandler.SendMessage, communicationSend)
 	messages.GET("", communicationHandler.ListMessages, communicationRead)
+	messages.POST("/:messageId/retry", communicationHandler.RetryMessage, communicationSend)
 
 	// Communication campaign routes (protected, tenant-scoped, nested under events).
 	campaigns := events.Group("/:eventId/campaigns")

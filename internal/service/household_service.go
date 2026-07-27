@@ -15,16 +15,19 @@ import (
 // HouseholdService encapsulates business logic for household operations.
 type HouseholdService struct {
 	householdRepo *repository.HouseholdRepository
+	guestRepo     *repository.GuestRepository
 	audit         *audit.Service
 }
 
 // NewHouseholdService creates a new HouseholdService.
 func NewHouseholdService(
 	householdRepo *repository.HouseholdRepository,
+	guestRepo *repository.GuestRepository,
 	auditSvc *audit.Service,
 ) *HouseholdService {
 	return &HouseholdService{
 		householdRepo: householdRepo,
+		guestRepo:     guestRepo,
 		audit:         auditSvc,
 	}
 }
@@ -39,9 +42,13 @@ func (s *HouseholdService) Create(ctx context.Context, tenantID, createdBy uuid.
 
 	// Add initial members if provided
 	for _, guestID := range req.GuestIDs {
+		if s.guestRepo != nil {
+			if _, err := s.guestRepo.GetByIDForTenant(ctx, tenantID, guestID); err != nil {
+				return nil, fmt.Errorf("create household: validate member: %w", err)
+			}
+		}
 		if err := s.householdRepo.AddMember(ctx, household.ID, guestID, false, nil); err != nil {
-			// Non-critical: log but continue
-			_ = err
+			return nil, fmt.Errorf("create household: add member: %w", err)
 		}
 	}
 
@@ -113,6 +120,11 @@ func (s *HouseholdService) AddMember(ctx context.Context, tenantID, householdID,
 	// Verify household exists
 	if _, err := s.householdRepo.GetByID(ctx, tenantID, householdID); err != nil {
 		return fmt.Errorf("add member: %w", err)
+	}
+	if s.guestRepo != nil {
+		if _, err := s.guestRepo.GetByIDForTenant(ctx, tenantID, guestID); err != nil {
+			return fmt.Errorf("add member: validate guest: %w", err)
+		}
 	}
 
 	var rolePtr *string

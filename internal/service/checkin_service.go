@@ -20,6 +20,7 @@ type CheckinService struct {
 	checkinRepo    *repository.CheckinRepository
 	guestRepo      *repository.GuestRepository
 	invitationRepo *repository.InvitationRepository
+	rsvpRepo       *repository.RSVPRepository
 	eventGuestRepo *repository.EventGuestRepository
 	eventRepo      *repository.EventRepository
 	seatingRepo    *repository.SeatingRepository
@@ -31,6 +32,7 @@ func NewCheckinService(
 	checkinRepo *repository.CheckinRepository,
 	guestRepo *repository.GuestRepository,
 	invitationRepo *repository.InvitationRepository,
+	rsvpRepo *repository.RSVPRepository,
 	eventGuestRepo *repository.EventGuestRepository,
 	eventRepo *repository.EventRepository,
 	seatingRepo *repository.SeatingRepository,
@@ -40,6 +42,7 @@ func NewCheckinService(
 		checkinRepo:    checkinRepo,
 		guestRepo:      guestRepo,
 		invitationRepo: invitationRepo,
+		rsvpRepo:       rsvpRepo,
 		eventGuestRepo: eventGuestRepo,
 		eventRepo:      eventRepo,
 		seatingRepo:    seatingRepo,
@@ -290,15 +293,31 @@ func (s *CheckinService) SearchGuests(ctx context.Context, tenantID, eventID uui
 			continue // Skip guests we can't verify
 		}
 
+		rsvpStatus := domain.RSVPStatusNoResponse
+		var invitationID *uuid.UUID
+		if s.invitationRepo != nil {
+			if invitation, invitationErr := s.invitationRepo.GetByEventAndGuest(ctx, eventID, g.ID); invitationErr == nil {
+				invitationID = &invitation.ID
+				if s.rsvpRepo != nil {
+					if rsvp, rsvpErr := s.rsvpRepo.GetByInvitation(ctx, invitation.ID); rsvpErr == nil {
+						rsvpStatus = rsvp.Status
+					} else if !errors.Is(rsvpErr, domain.ErrRSVPNotFound) {
+						continue
+					}
+				}
+			}
+		}
+
 		result := &domain.GuestSearchResult{
-			GuestID:     g.ID,
-			FullName:    g.FullName,
-			Nickname:    g.Nickname,
-			GuestType:   g.GuestType,
-			Segment:     g.Segment,
-			RSVPStatus:  "confirmed", // Default - would come from invitation in full implementation
-			IsCheckedIn: isCheckedIn,
-			MaxPax:      eventGuest.MaxPax,
+			GuestID:      g.ID,
+			FullName:     g.FullName,
+			Nickname:     g.Nickname,
+			GuestType:    g.GuestType,
+			Segment:      g.Segment,
+			InvitationID: invitationID,
+			RSVPStatus:   rsvpStatus,
+			IsCheckedIn:  isCheckedIn,
+			MaxPax:       eventGuest.MaxPax,
 		}
 
 		// Mask sensitive data for registration officers
