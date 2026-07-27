@@ -32,6 +32,28 @@ services:
     networks:
       - guestflow
 
+  gowa:
+    image: ghcr.io/aldinokemal/go-whatsapp-web-multidevice:v8.6.0
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      APP_PORT: 3000
+      APP_BASIC_AUTH: ${GOWA_BASIC_AUTH:?GOWA_BASIC_AUTH is required}
+      APP_OS: GuestFlow
+      WHATSAPP_ACCOUNT_VALIDATION: "false"
+      WHATSAPP_WEBHOOK: http://app:8080/api/v1/webhooks/gowa
+      WHATSAPP_WEBHOOK_SECRET: ${WHATSAPP_GOWA_WEBHOOK_SECRET:?WHATSAPP_GOWA_WEBHOOK_SECRET is required}
+      WHATSAPP_WEBHOOK_EVENTS: message.ack
+    volumes:
+      - guestflow_gowa_data:/app/storages
+    ports:
+      - "127.0.0.1:${HOST_GOWA_PORT:-13000}:3000"
+    expose:
+      - "3000"
+    networks:
+      - guestflow
+
   migrate:
     build:
       context: .
@@ -76,6 +98,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      gowa:
+        condition: service_started
     networks:
       - guestflow
 
@@ -96,6 +120,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      gowa:
+        condition: service_started
     entrypoint: ["/app/worker"]
     command: ["-queues=all", "-concurrency=3"]
     networks:
@@ -105,6 +131,7 @@ volumes:
   guestflow_postgres_data:
   guestflow_redis_data:
   guestflow_uploads:
+  guestflow_gowa_data:
 
 networks:
   guestflow:

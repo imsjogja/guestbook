@@ -1,17 +1,22 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"guestflow/internal/audit"
 	"guestflow/internal/config"
 	"guestflow/internal/domain"
 	"guestflow/internal/repository"
-	"guestflow/internal/security"
 	"guestflow/internal/whatsapp"
 
 	"github.com/google/uuid"
@@ -20,30 +25,36 @@ import (
 const whatsappIntegrationSettingsKey = "whatsapp"
 
 var ErrWhatsAppIntegrationInvalid = errors.New("invalid WhatsApp integration settings")
+var ErrWhatsAppDeviceConflict = errors.New("WhatsApp device is already assigned to another tenant")
+var ErrWhatsAppAuthInvalid = errors.New("GOWA Basic Auth was rejected")
 
-// WhatsAppIntegrationUpdateRequest contains optional changes to the provider.
-// Empty tokens intentionally preserve the existing encrypted values.
+// WhatsAppIntegrationUpdateRequest contains tenant-level WhatsApp changes.
 type WhatsAppIntegrationUpdateRequest struct {
-	Enabled           *bool  `json:"enabled"`
-	APIURL            string `json:"api_url,omitempty"`
-	AccountToken      string `json:"account_token,omitempty"`
-	SenderToken       string `json:"sender_token,omitempty"`
-	ClearAccountToken bool   `json:"clear_account_token,omitempty"`
-	ClearSenderToken  bool   `json:"clear_sender_token,omitempty"`
+	Enabled  *bool  `json:"enabled"`
+	DeviceID string `json:"device_id,omitempty"`
 }
 
-// WhatsAppIntegrationStatus is safe to return to the browser. Token values
-// are represented only by masked strings and configured flags.
+// WhatsAppIntegrationStatus is the tenant-safe WhatsApp connection status.
 type WhatsAppIntegrationStatus struct {
-	Enabled            bool       `json:"enabled"`
-	Configured         bool       `json:"configured"`
-	APIURL             string     `json:"api_url"`
-	AccountTokenSet    bool       `json:"account_token_set"`
-	AccountTokenMasked string     `json:"account_token_masked,omitempty"`
-	SenderTokenSet     bool       `json:"sender_token_set"`
-	SenderTokenMasked  string     `json:"sender_token_masked,omitempty"`
-	Source             string     `json:"source"`
-	UpdatedAt          *time.Time `json:"updated_at,omitempty"`
+	Enabled    bool                     `json:"enabled"`
+	Configured bool                     `json:"configured"`
+	Connection WhatsAppConnectionStatus `json:"connection"`
+}
+
+// WhatsAppConnectionStatus is the live device state reported by GOWA.
+type WhatsAppConnectionStatus struct {
+	State     string `json:"state"`
+	Connected bool   `json:"connected"`
+	LoggedIn  bool   `json:"logged_in"`
+	JID       string `json:"jid,omitempty"`
+	Error     string `json:"error,omitempty"`
+}
+
+// WhatsAppPairingStatus contains the short-lived QR pairing session details.
+type WhatsAppPairingStatus struct {
+	DeviceID   string `json:"device_id"`
+	QRURL      string `json:"qr_url"`
+	QRDuration int    `json:"qr_duration,omitempty"`
 }
 
 // WhatsAppConfigProvider lets communication flows resolve tenant settings
@@ -52,29 +63,31 @@ type WhatsAppConfigProvider interface {
 	ResolveWhatsAppConfig(ctx context.Context, tenantID uuid.UUID) (config.WhatsAppConfig, error)
 }
 
-// WhatsAppIntegrationService persists encrypted tenant credentials and applies
-// them to the in-memory provider client immediately.
+// WhatsAppIntegrationService persists tenant device settings and applies them
+// to the in-memory GOWA client immediately.
 type WhatsAppIntegrationService struct {
 	tenantRepo *repository.TenantRepository
 	client     *whatsapp.Client
 	fallback   config.WhatsAppConfig
-	secret     string
 	audit      *audit.Service
+	mu         sync.RWMutex
+	qrPaths    map[uuid.UUID]string
+	httpClient *http.Client
 }
 
 func NewWhatsAppIntegrationService(
 	tenantRepo *repository.TenantRepository,
 	client *whatsapp.Client,
 	fallback config.WhatsAppConfig,
-	encryptionSecret string,
 	auditService *audit.Service,
 ) *WhatsAppIntegrationService {
 	return &WhatsAppIntegrationService{
 		tenantRepo: tenantRepo,
 		client:     client,
 		fallback:   fallback,
-		secret:     encryptionSecret,
 		audit:      auditService,
+		qrPaths:    make(map[uuid.UUID]string),
+		httpClient: &http.Client{Timeout: 8 * time.Second},
 	}
 }
 
@@ -88,73 +101,54 @@ func (s *WhatsAppIntegrationService) ResolveWhatsAppConfig(ctx context.Context, 
 
 	cfg := s.fallback
 	wa, exists := readWhatsAppSettings(tenant.Settings)
-	if !exists {
-		return cfg, nil
-	}
-	if enabled, ok := wa["enabled"].(bool); ok {
-		cfg.Enabled = enabled
-	}
-	if apiURL, ok := wa["api_url"].(string); ok && strings.TrimSpace(apiURL) != "" {
-		cfg.APIURL = apiURL
-	}
-	if encrypted, ok := wa["account_token"].(string); ok && encrypted != "" {
-		cfg.AccountToken, err = security.DecryptSecret(s.secret, encrypted)
-		if err != nil {
-			return config.WhatsAppConfig{}, fmt.Errorf("decrypt WhatsApp account token: %w", err)
+	tenantDeviceID := ""
+	if exists {
+		if enabled, ok := wa["enabled"].(bool); ok {
+			cfg.Enabled = enabled
+		}
+		if deviceID, ok := wa["device_id"].(string); ok && strings.TrimSpace(deviceID) != "" {
+			tenantDeviceID = strings.TrimSpace(deviceID)
+			cfg.GOWADeviceID = tenantDeviceID
 		}
 	}
-	if encrypted, ok := wa["sender_token"].(string); ok && encrypted != "" {
-		cfg.SenderToken, err = security.DecryptSecret(s.secret, encrypted)
-		if err != nil {
-			return config.WhatsAppConfig{}, fmt.Errorf("decrypt WhatsApp sender token: %w", err)
+	if tenantDeviceID == "" {
+		// Environment credentials may be shared by the process, but every
+		// tenant gets an isolated GOWA session/device slot.
+		cfg.GOWADeviceID = defaultTenantDeviceID(tenantID)
+	}
+	if strings.TrimSpace(cfg.GOWADeviceID) != "" {
+		inUse, checkErr := s.tenantRepo.WhatsAppDeviceIDInUse(ctx, cfg.GOWADeviceID, tenantID)
+		if checkErr != nil {
+			return config.WhatsAppConfig{}, checkErr
+		}
+		if inUse {
+			return config.WhatsAppConfig{}, fmt.Errorf("%w: %s", ErrWhatsAppDeviceConflict, cfg.GOWADeviceID)
 		}
 	}
 	return cfg, nil
 }
 
-// GetStatus returns provider state without exposing credentials.
+// GetStatus returns tenant-safe GOWA connection state.
 func (s *WhatsAppIntegrationService) GetStatus(ctx context.Context, tenantID uuid.UUID) (*WhatsAppIntegrationStatus, error) {
 	cfg, err := s.ResolveWhatsAppConfig(ctx, tenantID)
 	if err != nil {
 		return nil, err
 	}
-	tenant, err := s.tenantRepo.GetByID(ctx, tenantID)
-	if err != nil {
-		return nil, fmt.Errorf("load WhatsApp integration status: %w", err)
-	}
-	wa, tenantConfigured := readWhatsAppSettings(tenant.Settings)
 	status := &WhatsAppIntegrationStatus{
-		Enabled:         cfg.Enabled,
-		Configured:      cfg.Enabled && strings.TrimSpace(cfg.APIURL) != "" && strings.TrimSpace(cfg.AccountToken) != "" && strings.TrimSpace(cfg.SenderToken) != "",
-		APIURL:          cfg.APIURL,
-		AccountTokenSet: strings.TrimSpace(cfg.AccountToken) != "",
-		SenderTokenSet:  strings.TrimSpace(cfg.SenderToken) != "",
-		Source:          "environment",
+		Enabled:    cfg.Enabled,
+		Configured: cfg.Enabled && configuredForStatus(cfg),
 	}
-	status.AccountTokenMasked = security.MaskSecret(cfg.AccountToken)
-	status.SenderTokenMasked = security.MaskSecret(cfg.SenderToken)
-	if tenantConfigured {
-		status.Source = "tenant"
-		if updated, ok := wa["updated_at"].(string); ok {
-			if parsed, parseErr := time.Parse(time.RFC3339, updated); parseErr == nil {
-				status.UpdatedAt = &parsed
-			}
-		}
-	}
+	status.Connection = s.getConnectionStatus(ctx, cfg)
 	return status, nil
 }
 
-// Update saves encrypted credentials and applies them without restarting the
-// process. The next send after a process restart resolves the same DB values.
+// Update saves tenant WhatsApp settings and applies them without restarting
+// the process. Server URL and authentication remain platform-managed.
 func (s *WhatsAppIntegrationService) Update(ctx context.Context, tenantID, userID uuid.UUID, req WhatsAppIntegrationUpdateRequest) (*WhatsAppIntegrationStatus, error) {
 	tenant, err := s.tenantRepo.GetByID(ctx, tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("load tenant for WhatsApp integration: %w", err)
 	}
-	if strings.TrimSpace(s.secret) == "" {
-		return nil, fmt.Errorf("%w: encryption is not configured", ErrWhatsAppIntegrationInvalid)
-	}
-
 	settings := cloneSettings(tenant.Settings)
 	integrations, _ := settings["integrations"].(map[string]interface{})
 	if integrations == nil {
@@ -167,26 +161,30 @@ func (s *WhatsAppIntegrationService) Update(ctx context.Context, tenantID, userI
 	if req.Enabled != nil {
 		wa["enabled"] = *req.Enabled
 	}
-	if strings.TrimSpace(req.APIURL) != "" {
-		wa["api_url"] = strings.TrimSpace(req.APIURL)
-	}
-	if req.ClearAccountToken {
-		delete(wa, "account_token")
-	} else if strings.TrimSpace(req.AccountToken) != "" {
-		encrypted, encryptErr := security.EncryptSecret(s.secret, strings.TrimSpace(req.AccountToken))
-		if encryptErr != nil {
-			return nil, fmt.Errorf("encrypt WhatsApp account token: %w", encryptErr)
+	deviceID := strings.TrimSpace(req.DeviceID)
+	if deviceID == "" {
+		if existing, ok := wa["device_id"].(string); ok {
+			deviceID = strings.TrimSpace(existing)
 		}
-		wa["account_token"] = encrypted
 	}
-	if req.ClearSenderToken {
-		delete(wa, "sender_token")
-	} else if strings.TrimSpace(req.SenderToken) != "" {
-		encrypted, encryptErr := security.EncryptSecret(s.secret, strings.TrimSpace(req.SenderToken))
-		if encryptErr != nil {
-			return nil, fmt.Errorf("encrypt WhatsApp sender token: %w", encryptErr)
-		}
-		wa["sender_token"] = encrypted
+	if deviceID == "" {
+		deviceID = defaultTenantDeviceID(tenantID)
+	}
+	if err := validateWhatsAppDeviceID(deviceID); err != nil {
+		return nil, err
+	}
+	inUse, err := s.tenantRepo.WhatsAppDeviceIDInUse(ctx, deviceID, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	if inUse {
+		return nil, fmt.Errorf("%w: %s", ErrWhatsAppDeviceConflict, deviceID)
+	}
+	wa["device_id"] = deviceID
+	// Remove settings from the retired provider and tenant-managed GOWA
+	// credentials whenever this integration is saved.
+	for _, key := range []string{"provider", "api_url", "username", "password", "account_token", "sender_token", "phone_number_id", "access_token", "webhook_verify_token"} {
+		delete(wa, key)
 	}
 	wa["updated_at"] = time.Now().UTC().Format(time.RFC3339)
 	integrations[whatsappIntegrationSettingsKey] = wa
@@ -212,6 +210,201 @@ func (s *WhatsAppIntegrationService) Update(ctx context.Context, tenantID, userI
 	return s.GetStatus(ctx, tenantID)
 }
 
+// StartPairing creates the configured device slot when necessary and starts a
+// GOWA QR pairing session. The QR image itself is served by the authenticated
+// GuestFlow endpoint so the browser never needs direct GOWA access.
+func (s *WhatsAppIntegrationService) StartPairing(ctx context.Context, tenantID uuid.UUID) (*WhatsAppPairingStatus, error) {
+	cfg, err := s.ResolveWhatsAppConfig(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	if !cfg.Enabled || !configuredForStatus(cfg) {
+		return nil, fmt.Errorf("%w: GOWA is not configured", ErrWhatsAppIntegrationInvalid)
+	}
+	if err := s.ensureGOWADevice(ctx, cfg); err != nil {
+		return nil, err
+	}
+
+	// Use the app-level login endpoint for compatibility with GOWA v8.x.
+	// Device-scoped requests select the configured session via X-Device-Id.
+	body, statusCode, err := s.doGOWA(ctx, cfg, http.MethodGet, "/app/login", nil)
+	if err != nil {
+		return nil, err
+	}
+	if statusCode < http.StatusOK || statusCode >= http.StatusMultipleChoices {
+		return nil, gowaResponseError(body, statusCode)
+	}
+	var response struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+		Results struct {
+			QRLink     string `json:"qr_link"`
+			QRDuration int    `json:"qr_duration"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, fmt.Errorf("decode GOWA pairing response: %w", err)
+	}
+	if response.Code != "" && !strings.EqualFold(response.Code, "SUCCESS") {
+		return nil, fmt.Errorf("GOWA pairing rejected: %s", firstNonEmpty(response.Message, response.Code))
+	}
+	qrURL, err := url.Parse(response.Results.QRLink)
+	if err != nil || qrURL.Path == "" {
+		return nil, errors.New("GOWA did not return a valid pairing QR")
+	}
+	s.mu.Lock()
+	s.qrPaths[tenantID] = qrURL.RequestURI()
+	s.mu.Unlock()
+	return &WhatsAppPairingStatus{DeviceID: cfg.GOWADeviceID, QRDuration: response.Results.QRDuration}, nil
+}
+
+// GetPairingQR proxies the current GOWA QR image through the backend.
+func (s *WhatsAppIntegrationService) GetPairingQR(ctx context.Context, tenantID uuid.UUID) ([]byte, string, error) {
+	cfg, err := s.ResolveWhatsAppConfig(ctx, tenantID)
+	if err != nil {
+		return nil, "", err
+	}
+	s.mu.RLock()
+	path := s.qrPaths[tenantID]
+	s.mu.RUnlock()
+	if path == "" {
+		return nil, "", errors.New("GOWA pairing QR is not available; start pairing first")
+	}
+	body, statusCode, err := s.doGOWA(ctx, cfg, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, "", err
+	}
+	if statusCode < http.StatusOK || statusCode >= http.StatusMultipleChoices {
+		return nil, "", gowaResponseError(body, statusCode)
+	}
+	return body, "image/png", nil
+}
+
+func (s *WhatsAppIntegrationService) getConnectionStatus(ctx context.Context, cfg config.WhatsAppConfig) WhatsAppConnectionStatus {
+	if !cfg.Enabled {
+		return WhatsAppConnectionStatus{State: "disabled"}
+	}
+	if !configuredForStatus(cfg) {
+		return WhatsAppConnectionStatus{State: "not_configured"}
+	}
+	if err := s.ensureGOWADevice(ctx, cfg); err != nil {
+		if errors.Is(err, ErrWhatsAppAuthInvalid) {
+			return WhatsAppConnectionStatus{State: "unauthorized", Error: "WhatsApp belum dapat diautentikasi oleh platform"}
+		}
+		return WhatsAppConnectionStatus{State: "unavailable", Error: err.Error()}
+	}
+	body, statusCode, err := s.doGOWA(ctx, cfg, http.MethodGet, "/app/status", nil)
+	if err != nil {
+		return WhatsAppConnectionStatus{State: "unavailable", Error: err.Error()}
+	}
+	var response struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+		Results struct {
+			IsConnected bool   `json:"is_connected"`
+			IsLoggedIn  bool   `json:"is_logged_in"`
+			JID         string `json:"jid"`
+		} `json:"results"`
+	}
+	if json.Unmarshal(body, &response) != nil {
+		return WhatsAppConnectionStatus{State: "unavailable", Error: "invalid GOWA status response"}
+	}
+	if statusCode == http.StatusNotFound || !strings.EqualFold(response.Code, "SUCCESS") {
+		return WhatsAppConnectionStatus{State: "not_registered", Error: firstNonEmpty(response.Message, response.Code)}
+	}
+	state := "disconnected"
+	if response.Results.IsLoggedIn {
+		state = "logged_in"
+	} else if response.Results.IsConnected {
+		state = "connected"
+	}
+	return WhatsAppConnectionStatus{State: state, Connected: response.Results.IsConnected, LoggedIn: response.Results.IsLoggedIn, JID: response.Results.JID}
+}
+
+func (s *WhatsAppIntegrationService) ensureGOWADevice(ctx context.Context, cfg config.WhatsAppConfig) error {
+	path := "/devices/" + url.PathEscape(cfg.GOWADeviceID)
+	body, statusCode, err := s.doGOWA(ctx, cfg, http.MethodGet, path, nil)
+	if err != nil {
+		return err
+	}
+	if statusCode >= http.StatusOK && statusCode < http.StatusMultipleChoices {
+		return nil
+	}
+	if !isGOWADeviceNotFound(body, statusCode) {
+		if statusCode == http.StatusUnauthorized {
+			return fmt.Errorf("%w: GOWA returned HTTP 401", ErrWhatsAppAuthInvalid)
+		}
+		return gowaResponseError(body, statusCode)
+	}
+	payload, _ := json.Marshal(map[string]string{"device_id": cfg.GOWADeviceID})
+	body, statusCode, err = s.doGOWA(ctx, cfg, http.MethodPost, "/devices", payload)
+	if err != nil {
+		return err
+	}
+	if statusCode < http.StatusOK || statusCode >= http.StatusMultipleChoices {
+		if statusCode == http.StatusUnauthorized {
+			return fmt.Errorf("%w: GOWA returned HTTP 401", ErrWhatsAppAuthInvalid)
+		}
+		return gowaResponseError(body, statusCode)
+	}
+	return nil
+}
+
+func isGOWADeviceNotFound(body []byte, statusCode int) bool {
+	if statusCode == http.StatusNotFound {
+		return true
+	}
+	var response struct {
+		Message string `json:"message"`
+	}
+	if json.Unmarshal(body, &response) != nil {
+		return false
+	}
+	message := strings.ToLower(strings.TrimSpace(response.Message))
+	return strings.Contains(message, "device") && strings.Contains(message, "not found")
+}
+
+func (s *WhatsAppIntegrationService) doGOWA(ctx context.Context, cfg config.WhatsAppConfig, method, path string, body []byte) ([]byte, int, error) {
+	baseURL := strings.TrimRight(cfg.GOWAAPIURL, "/")
+	if baseURL == "" {
+		return nil, 0, errors.New("GOWA API URL is empty")
+	}
+	req, err := http.NewRequestWithContext(ctx, method, baseURL+path, bytes.NewReader(body))
+	if err != nil {
+		return nil, 0, fmt.Errorf("create GOWA request: %w", err)
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if cfg.GOWADeviceID != "" {
+		req.Header.Set("X-Device-Id", cfg.GOWADeviceID)
+	}
+	if cfg.GOWAUsername != "" || cfg.GOWAPassword != "" {
+		req.SetBasicAuth(cfg.GOWAUsername, cfg.GOWAPassword)
+	}
+	response, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, 0, fmt.Errorf("request GOWA: %w", err)
+	}
+	defer response.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(response.Body, 2<<20))
+	if err != nil {
+		return nil, response.StatusCode, fmt.Errorf("read GOWA response: %w", err)
+	}
+	return data, response.StatusCode, nil
+}
+
+func gowaResponseError(body []byte, statusCode int) error {
+	var response struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	}
+	if json.Unmarshal(body, &response) == nil && (response.Code != "" || response.Message != "") {
+		return fmt.Errorf("GOWA returned %s: %s", firstNonEmpty(response.Code, "ERROR"), firstNonEmpty(response.Message, "request failed"))
+	}
+	return fmt.Errorf("GOWA returned HTTP %d", statusCode)
+}
+
 func readWhatsAppSettings(settings domain.JSONMap) (map[string]interface{}, bool) {
 	integrations, ok := settings["integrations"].(map[string]interface{})
 	if !ok {
@@ -230,4 +423,33 @@ func cloneSettings(settings domain.JSONMap) domain.JSONMap {
 		cloned[key] = value
 	}
 	return cloned
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func configuredForStatus(cfg config.WhatsAppConfig) bool {
+	return strings.TrimSpace(cfg.GOWAAPIURL) != "" && strings.TrimSpace(cfg.GOWADeviceID) != "" && ((cfg.GOWAUsername == "") == (cfg.GOWAPassword == ""))
+}
+
+func defaultTenantDeviceID(tenantID uuid.UUID) string {
+	return "guestflow-" + strings.ReplaceAll(tenantID.String(), "-", "")
+}
+
+func validateWhatsAppDeviceID(deviceID string) error {
+	if len(deviceID) < 3 || len(deviceID) > 64 {
+		return fmt.Errorf("%w: device_id must be between 3 and 64 characters", ErrWhatsAppIntegrationInvalid)
+	}
+	for _, char := range deviceID {
+		if (char < 'a' || char > 'z') && (char < 'A' || char > 'Z') && (char < '0' || char > '9') && char != '-' && char != '_' && char != '.' {
+			return fmt.Errorf("%w: device_id contains unsupported characters", ErrWhatsAppIntegrationInvalid)
+		}
+	}
+	return nil
 }

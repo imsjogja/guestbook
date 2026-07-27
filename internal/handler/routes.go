@@ -28,6 +28,7 @@ func RegisterRoutes(
 	seatingHandler *SeatingHandler,
 	communicationHandler *CommunicationHandler,
 	whatsappIntegrationHandler *WhatsAppIntegrationHandler,
+	gowaWebhookHandler *GOWAWebhookHandler,
 	dashboardHandler *DashboardHandler,
 	invitationSiteHandler *InvitationSiteHandler,
 	htmxDashboardHandler *HTMXDashboardHandler,
@@ -59,6 +60,9 @@ func RegisterRoutes(
 
 	// Public RSVP submission route (no auth required - accessed by token).
 	api.POST("/rsvp", rsvpHandler.Submit)
+	if gowaWebhookHandler != nil {
+		api.POST("/webhooks/gowa", gowaWebhookHandler.Handle)
+	}
 
 	// Protected routes require valid JWT.
 	protected := api.Group("")
@@ -233,6 +237,8 @@ func RegisterRoutes(
 	integrations := tenants.Group("/:id/integrations")
 	integrations.GET("/whatsapp", whatsappIntegrationHandler.Get, tenantSettingsRead)
 	integrations.PATCH("/whatsapp", whatsappIntegrationHandler.Update, tenantSettingsWrite)
+	integrations.POST("/whatsapp/pair", whatsappIntegrationHandler.StartPairing, tenantSettingsWrite)
+	integrations.GET("/whatsapp/qr", whatsappIntegrationHandler.GetPairingQR, tenantSettingsRead)
 
 	// Billing routes (protected, tenant-scoped)
 	billing := protected.Group("/billing", middleware.TenantResolver(middleware.DefaultTenantResolverConfig(db)))

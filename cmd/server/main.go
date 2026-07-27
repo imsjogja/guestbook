@@ -231,7 +231,7 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 	checkinService := service.NewCheckinService(checkinRepo, guestRepo, invitationRepo, eventGuestRepo, eventRepo, seatingRepo, auditService)
 	seatingService := service.NewSeatingService(seatingRepo, guestRepo, eventGuestRepo, auditService)
 	whatsappClient := whatsapp.NewClient(cfg.WhatsApp)
-	whatsappIntegrationService := service.NewWhatsAppIntegrationService(tenantRepo, whatsappClient, cfg.WhatsApp, cfg.JWT.Secret, auditService)
+	whatsappIntegrationService := service.NewWhatsAppIntegrationService(tenantRepo, whatsappClient, cfg.WhatsApp, auditService)
 	commService := service.NewCommunicationService(commRepo, guestRepo, eventGuestRepo, eventRepo, invitationRepo, whatsappClient, authMailer, cfg.App.PublicURL)
 	commService.SetWhatsAppConfigProvider(whatsappIntegrationService)
 	dashboardService := service.NewDashboardService(db, eventRepo, rsvpRepo, checkinRepo, commRepo, seatingRepo)
@@ -255,6 +255,7 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 	seatingHandler := handler.NewSeatingHandler(seatingService)
 	communicationHandler := handler.NewCommunicationHandler(commService)
 	whatsappIntegrationHandler := handler.NewWhatsAppIntegrationHandler(whatsappIntegrationService)
+	gowaWebhookHandler := handler.NewGOWAWebhookHandler(commRepo, cfg.WhatsApp.GOWAWebhookSecret)
 	dashboardHandler := handler.NewDashboardHandler(dashboardService)
 	invitationSiteHandler := handler.NewInvitationSiteHandler(invitationService, rsvpService, eventService, guestService, checkinService)
 	billingHandler := handler.NewBillingHandler(billingService, midtransClient)
@@ -309,6 +310,7 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 		seatingHandler,
 		communicationHandler,
 		whatsappIntegrationHandler,
+		gowaWebhookHandler,
 		dashboardHandler,
 		invitationSiteHandler,
 		htmxDashboardHandler,

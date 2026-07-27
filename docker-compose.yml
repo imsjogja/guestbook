@@ -1,5 +1,5 @@
 # GuestFlow - Docker Compose Development Environment
-# Services: PostgreSQL 16, Redis 7, Go App, Nginx
+# Services: PostgreSQL 16, Redis 7, GOWA, Go App, Nginx
 #
 # Usage:
 #   cp .env.example .env
@@ -83,6 +83,30 @@ services:
       - guestflow
 
   # ---------------------------------------------------------------------------
+  # GOWA - self-hosted WhatsApp Web REST API
+  # ---------------------------------------------------------------------------
+  gowa:
+    image: ghcr.io/aldinokemal/go-whatsapp-web-multidevice:v8.6.0
+    container_name: guestflow-gowa
+    restart: unless-stopped
+    environment:
+      APP_PORT: 3000
+      APP_BASIC_AUTH: ${GOWA_BASIC_AUTH:-gowa-user:gowa-pass}
+      APP_OS: GuestFlow
+      WHATSAPP_ACCOUNT_VALIDATION: "false"
+      WHATSAPP_WEBHOOK: http://app:8080/api/v1/webhooks/gowa
+      WHATSAPP_WEBHOOK_SECRET: ${WHATSAPP_GOWA_WEBHOOK_SECRET:-local-gowa-webhook-secret}
+      WHATSAPP_WEBHOOK_EVENTS: message.ack
+    volumes:
+      - gowa_data:/app/storages
+    ports:
+      - "${HOST_GOWA_PORT:-13000}:3000"
+    expose:
+      - "3000"
+    networks:
+      - guestflow
+
+  # ---------------------------------------------------------------------------
   # GuestFlow Application Server
   # ---------------------------------------------------------------------------
   app:
@@ -110,9 +134,11 @@ services:
       RATE_LIMIT_BURST: 10
       CORS_ALLOWED_ORIGINS: "*"
       WHATSAPP_ENABLED: ${WHATSAPP_ENABLED:-false}
-      WHATSAPP_API_URL: ${WHATSAPP_API_URL:-https://app.blastr.id/api/pub/send}
-      WHATSAPP_ACCOUNT_TOKEN: ${WHATSAPP_ACCOUNT_TOKEN:-}
-      WHATSAPP_SENDER_TOKEN: ${WHATSAPP_SENDER_TOKEN:-}
+      WHATSAPP_GOWA_API_URL: ${WHATSAPP_GOWA_API_URL:-http://gowa:3000}
+      WHATSAPP_GOWA_DEVICE_ID: ${WHATSAPP_GOWA_DEVICE_ID:-guestflow-main}
+      WHATSAPP_GOWA_USERNAME: ${WHATSAPP_GOWA_USERNAME:-gowa-user}
+      WHATSAPP_GOWA_PASSWORD: ${WHATSAPP_GOWA_PASSWORD:-gowa-pass}
+      WHATSAPP_GOWA_WEBHOOK_SECRET: ${WHATSAPP_GOWA_WEBHOOK_SECRET:-local-gowa-webhook-secret}
       EMAIL_ENABLED: ${EMAIL_ENABLED:-false}
       EMAIL_HOST: ${EMAIL_HOST:-}
       EMAIL_PORT: ${EMAIL_PORT:-587}
@@ -133,6 +159,8 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      gowa:
+        condition: service_started
     networks:
       - guestflow
 
@@ -160,9 +188,11 @@ services:
       JWT_ACCESS_TOKEN_EXPIRY: 15m
       JWT_REFRESH_TOKEN_EXPIRY: 168h
       WHATSAPP_ENABLED: ${WHATSAPP_ENABLED:-false}
-      WHATSAPP_API_URL: ${WHATSAPP_API_URL:-https://app.blastr.id/api/pub/send}
-      WHATSAPP_ACCOUNT_TOKEN: ${WHATSAPP_ACCOUNT_TOKEN:-}
-      WHATSAPP_SENDER_TOKEN: ${WHATSAPP_SENDER_TOKEN:-}
+      WHATSAPP_GOWA_API_URL: ${WHATSAPP_GOWA_API_URL:-http://gowa:3000}
+      WHATSAPP_GOWA_DEVICE_ID: ${WHATSAPP_GOWA_DEVICE_ID:-guestflow-main}
+      WHATSAPP_GOWA_USERNAME: ${WHATSAPP_GOWA_USERNAME:-gowa-user}
+      WHATSAPP_GOWA_PASSWORD: ${WHATSAPP_GOWA_PASSWORD:-gowa-pass}
+      WHATSAPP_GOWA_WEBHOOK_SECRET: ${WHATSAPP_GOWA_WEBHOOK_SECRET:-local-gowa-webhook-secret}
       EMAIL_ENABLED: ${EMAIL_ENABLED:-false}
       EMAIL_HOST: ${EMAIL_HOST:-}
       EMAIL_PORT: ${EMAIL_PORT:-587}
@@ -178,6 +208,8 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      gowa:
+        condition: service_started
     networks:
       - guestflow
     entrypoint: ["/app/worker"]
@@ -226,6 +258,8 @@ volumes:
   redis_data:
     driver: local
   minio_data:
+    driver: local
+  gowa_data:
     driver: local
 
 networks:

@@ -98,15 +98,14 @@ func (s ServerConfig) ListenAddr() string {
 	return fmt.Sprintf("%s:%d", s.Host, s.Port)
 }
 
-// WhatsAppConfig contains WhatsApp Business API settings.
+// WhatsAppConfig contains the platform WhatsApp GOWA settings.
 type WhatsAppConfig struct {
-	Enabled            bool   `mapstructure:"enabled"`
-	APIURL             string `mapstructure:"api_url"`
-	AccountToken       string `mapstructure:"account_token"`
-	SenderToken        string `mapstructure:"sender_token"`
-	PhoneNumberID      string `mapstructure:"phone_number_id"`
-	AccessToken        string `mapstructure:"access_token"`
-	WebhookVerifyToken string `mapstructure:"webhook_verify_token"`
+	Enabled           bool   `mapstructure:"enabled"`
+	GOWAAPIURL        string `mapstructure:"gowa_api_url"`
+	GOWADeviceID      string `mapstructure:"gowa_device_id"`
+	GOWAUsername      string `mapstructure:"gowa_username"`
+	GOWAPassword      string `mapstructure:"gowa_password"`
+	GOWAWebhookSecret string `mapstructure:"gowa_webhook_secret"`
 }
 
 // EmailConfig contains SMTP email settings.
@@ -255,7 +254,8 @@ func setDefaults(v *viper.Viper) {
 
 	// WhatsApp defaults
 	v.SetDefault("whatsapp.enabled", false)
-	v.SetDefault("whatsapp.api_url", "https://app.blastr.id/api/pub/send")
+	v.SetDefault("whatsapp.gowa_api_url", "http://gowa:3000")
+	v.SetDefault("whatsapp.gowa_device_id", "guestflow-main")
 
 	// Email defaults
 	v.SetDefault("email.enabled", false)
@@ -324,12 +324,11 @@ func bindEnvs(v *viper.Viper) {
 		{"rate_limit.burst", "RATE_LIMIT_BURST"},
 		{"rate_limit.ttl", "RATE_LIMIT_TTL"},
 		{"whatsapp.enabled", "WHATSAPP_ENABLED"},
-		{"whatsapp.api_url", "WHATSAPP_API_URL"},
-		{"whatsapp.account_token", "WHATSAPP_ACCOUNT_TOKEN"},
-		{"whatsapp.sender_token", "WHATSAPP_SENDER_TOKEN"},
-		{"whatsapp.phone_number_id", "WHATSAPP_PHONE_NUMBER_ID"},
-		{"whatsapp.access_token", "WHATSAPP_ACCESS_TOKEN"},
-		{"whatsapp.webhook_verify_token", "WHATSAPP_WEBHOOK_VERIFY_TOKEN"},
+		{"whatsapp.gowa_api_url", "WHATSAPP_GOWA_API_URL"},
+		{"whatsapp.gowa_device_id", "WHATSAPP_GOWA_DEVICE_ID"},
+		{"whatsapp.gowa_username", "WHATSAPP_GOWA_USERNAME"},
+		{"whatsapp.gowa_password", "WHATSAPP_GOWA_PASSWORD"},
+		{"whatsapp.gowa_webhook_secret", "WHATSAPP_GOWA_WEBHOOK_SECRET"},
 		{"email.enabled", "EMAIL_ENABLED"},
 		{"email.host", "EMAIL_HOST"},
 		{"email.port", "EMAIL_PORT"},

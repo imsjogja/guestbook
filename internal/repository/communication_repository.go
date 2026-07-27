@@ -525,6 +525,25 @@ func (r *CommunicationRepository) GetMessage(ctx context.Context, tenantID, id u
 	return &message, nil
 }
 
+// GetMessageByExternalID retrieves a provider message for webhook correlation.
+// Provider IDs are treated as globally unique within GuestFlow.
+func (r *CommunicationRepository) GetMessageByExternalID(ctx context.Context, externalID string) (*domain.CommunicationMessage, error) {
+	var message domain.CommunicationMessage
+	query := `
+		SELECT * FROM communication_messages
+		WHERE external_id = $1
+		ORDER BY created_at DESC
+		LIMIT 1
+	`
+	if err := r.db.GetContext(ctx, &message, query, externalID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, domain.ErrMessageNotFound
+		}
+		return nil, fmt.Errorf("get message by external id: %w", err)
+	}
+	return &message, nil
+}
+
 // UpdateMessageStatus updates the status and related fields of a message.
 func (r *CommunicationRepository) UpdateMessageStatus(ctx context.Context, tenantID, id uuid.UUID, status string, sentAt, deliveredAt, readAt, failedAt *time.Time, errorMessage, externalID *string, providerHTTPStatus *int, cost *float64) error {
 	now := time.Now().UTC()

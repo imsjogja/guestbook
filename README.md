@@ -283,6 +283,8 @@ OpenAPI 3.0 specification available at `docs/api/openapi.yaml`.
 | `POST` | `/api/v1/tenants/:id/users` | Manually add an active, verified team member |
 | `GET`  | `/api/v1/tenants/:id/integrations/whatsapp` | Get masked WhatsApp integration status |
 | `PATCH` | `/api/v1/tenants/:id/integrations/whatsapp` | Save and apply WhatsApp credentials |
+| `POST` | `/api/v1/tenants/:id/integrations/whatsapp/pair` | Start GOWA QR pairing |
+| `GET`  | `/api/v1/tenants/:id/integrations/whatsapp/qr` | Get the current pairing QR image |
 | `GET`  | `/api/v1/tenants/:id/events` | List events |
 | `POST` | `/api/v1/tenants/:id/events` | Create event |
 | `GET`  | `/api/v1/tenants/:id/events/:eventId/members/access` | Get effective event access |
@@ -297,6 +299,7 @@ OpenAPI 3.0 specification available at `docs/api/openapi.yaml`.
 | `POST` | `/api/v1/tenants/:id/events/:eventId/messages/send` | Send a WhatsApp template to one or more guests |
 | `POST` | `/api/v1/tenants/:id/events/:eventId/campaigns/:campaignId/launch` | Send a campaign to filtered guests |
 | `POST` | `/api/v1/rsvp` | Submit RSVP (public) |
+| `POST` | `/api/v1/webhooks/gowa` | Receive signed GOWA delivery/read receipts (public webhook) |
 | `GET`  | `/api/v1/tenants/:id/events/:eventId/rsvp/dashboard` | RSVP dashboard |
 | `GET`  | `/api/v1/tenants/:id/events/:eventId/rsvp/reminders/candidates` | List no-response guests eligible for an RSVP reminder |
 | `POST` | `/api/v1/tenants/:id/events/:eventId/rsvp/reminders` | Send RSVP reminders to no-response guests |
@@ -316,7 +319,7 @@ All protected endpoints require:
 
 ### WhatsApp Delivery Flow
 
-WhatsApp delivery is available from the guest detail action, invitation row action, selected invitations, and communication campaigns. All paths use the same `messages/send` service so every attempt is logged per guest in `communication_messages`. The invitation lifecycle (`draft`, `opened`, `responded`, `revoked`) is separate from delivery status (`not_sent`, `queued`, `sent`, `failed`, `delivered`, `read`). A `sent` message means Blastr accepted the request at the recorded `provider_http_status`; `delivered` and `read` require provider receipts.
+WhatsApp delivery is available from the guest detail action, invitation row action, selected invitations, and communication campaigns. All paths use the same `messages/send` service so every attempt is logged per guest in `communication_messages`. The invitation lifecycle (`draft`, `opened`, `responded`, `revoked`) is separate from delivery status (`not_sent`, `queued`, `sent`, `failed`, `delivered`, `read`). A `sent` message means GOWA accepted `POST /send/message` and returned a provider `message_id`; `delivered` and `read` are applied from signed `message.ack` webhooks.
 
 Every new tenant is automatically provisioned with the standard WhatsApp and email invitation templates. Adding another member to an existing tenant does not create duplicates; the generator endpoint can be called again safely if a tenant needs to repair or restore its defaults.
 
@@ -329,7 +332,11 @@ Every new tenant is automatically provisioned with the standard WhatsApp and ema
 
 Before a batch is sent, the API verifies that every guest belongs to the selected event and has a valid WhatsApp number. An empty or invalid number returns `422` and no message in that batch is sent. Provider credentials that are missing or disabled return `503`.
 
-WhatsApp credentials can be managed from **Pengaturan > Integrasi**. The UI never receives token values back; tenant overrides are encrypted at rest using `JWT_SECRET` as the key derivation input. Saving the form applies the new credentials immediately to the running service. After a restart, the backend resolves the encrypted tenant configuration on the first send, so no container restart is required for normal changes. `WHATSAPP_ACCOUNT_TOKEN` and `WHATSAPP_SENDER_TOKEN` remain the environment fallback for tenants without an override.
+WhatsApp is provided exclusively by GOWA, a self-hosted WhatsApp Web REST service. The `gowa` container keeps its paired session in a persistent Docker volume. Operator pairing is available in the UI under **Pengaturan > Integrasi > WhatsApp Business**: activate WhatsApp, click **Hubungkan WhatsApp**, then scan the displayed QR from WhatsApp > Perangkat tertaut. The UI polls the connection status and hides the QR after login. The backend sends to `/send/message` with `X-Device-Id` and server-managed authentication. GOWA endpoint and server credentials are deployment settings; each tenant only manages its own WhatsApp pairing.
+
+Each tenant receives an isolated device ID in the form `guestflow-<tenant_uuid>`. The tenant owner pairs their own WhatsApp number through the QR; the number is never selected from another tenant's session. The database enforces one configured device ID per tenant, and a legacy duplicate is assigned a new tenant-scoped ID during migration `1016`, requiring that tenant to pair again.
+
+Required environment variables are `WHATSAPP_ENABLED=true`, `WHATSAPP_GOWA_API_URL`, `WHATSAPP_GOWA_DEVICE_ID`, `WHATSAPP_GOWA_USERNAME`, `WHATSAPP_GOWA_PASSWORD`, `WHATSAPP_GOWA_WEBHOOK_SECRET`, and `GOWA_BASIC_AUTH`. Keep GOWA internal to the Docker network; do not publish port 3000 directly in production.
 
 ### RSVP Reminder Flow
 
@@ -450,12 +457,15 @@ All configuration is via environment variables. Copy `.env.example` to `.env` an
 | `REDIS_PORT` | Redis port | `6379` |
 | `JWT_ACCESS_SECRET` | JWT access token secret | *(required)* |
 | `JWT_REFRESH_SECRET` | JWT refresh token secret | *(required)* |
-| `WHATSAPP_ENABLED` | Enable Blastr WhatsApp delivery | `false` |
-| `WHATSAPP_API_URL` | Blastr send endpoint | `https://app.blastr.id/api/pub/send` |
-| `WHATSAPP_ACCOUNT_TOKEN` | Blastr account bearer token | *(required when enabled)* |
-| `WHATSAPP_SENDER_TOKEN` | Blastr sender token | *(required when enabled)* |
+| `WHATSAPP_ENABLED` | Enable WhatsApp delivery | `false` |
+| `WHATSAPP_GOWA_API_URL` | Internal GOWA base URL | `http://gowa:3000` |
+| `WHATSAPP_GOWA_DEVICE_ID` | GOWA device/session ID | `guestflow-main` |
+| `WHATSAPP_GOWA_USERNAME` | GOWA Basic Auth username | *(required when enabled)* |
+| `WHATSAPP_GOWA_PASSWORD` | GOWA Basic Auth password | *(required when enabled)* |
+| `WHATSAPP_GOWA_WEBHOOK_SECRET` | HMAC secret shared with GOWA | *(required for receipts)* |
+| `GOWA_BASIC_AUTH` | Basic Auth accepted by the GOWA container | *(required in production)* |
 
-Tenant-specific WhatsApp credentials are managed through the integration endpoints above and take precedence over these environment fallback values.
+Tenant-specific device IDs are managed through the integration endpoints above; server URL and authentication remain deployment-managed.
 
 See `.env.example` for full configuration options.
 
@@ -674,7 +684,7 @@ Target: **Level 2** (Application handling sensitive data)
 - Docker development environment
 
 ### Phase 2 (Planned)
-- [x] Blastr WhatsApp delivery integration with per-guest and batch actions
+- [x] GOWA WhatsApp delivery integration with per-guest and batch actions
 - [x] RSVP reminder flow (manual trigger, 24h throttle, no-response targeting)
 - [ ] Automated reminder scheduling
 - [ ] Offline-first PWA check-in scanner

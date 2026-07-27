@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"guestflow/internal/config"
 )
@@ -36,83 +35,42 @@ func TestNormalizePhone(t *testing.T) {
 	}
 }
 
-func TestClientSendUsesBlastrHeadersAndPayload(t *testing.T) {
+func TestClientSendUsesGOWAHeadersAndPayload(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if got := r.Header.Get("Authorization"); got != "Bearer account-token" {
-			t.Errorf("Authorization = %q", got)
+		if r.URL.Path != "/send/message" {
+			t.Errorf("path = %q, want /send/message", r.URL.Path)
 		}
-		if got := r.Header.Get("X-Sender-Token"); got != "sender-token" {
-			t.Errorf("X-Sender-Token = %q", got)
+		if got := r.Header.Get("X-Device-Id"); got != "guestflow-main" {
+			t.Errorf("X-Device-Id = %q", got)
+		}
+		if username, password, ok := r.BasicAuth(); !ok || username != "gowa-user" || password != "gowa-pass" {
+			t.Errorf("BasicAuth = %q/%q/%v", username, password, ok)
 		}
 		if got := r.Header.Get("Content-Type"); got != "application/json" {
 			t.Errorf("Content-Type = %q", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"message_id":"blastr-123"}`))
+		_, _ = w.Write([]byte(`{"code":"SUCCESS","message":"Success","results":{"message_id":"gowa-123"}}`))
 	}))
 	defer server.Close()
 
 	client := NewClient(config.WhatsAppConfig{
 		Enabled:      true,
-		APIURL:       server.URL,
-		AccountToken: "account-token",
-		SenderToken:  "sender-token",
+		GOWAAPIURL:   server.URL,
+		GOWADeviceID: "guestflow-main",
+		GOWAUsername: "gowa-user",
+		GOWAPassword: "gowa-pass",
 	})
 
 	receipt, err := client.Send(context.Background(), "081234567890", "Halo")
 	if err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
-	if receipt.ExternalID != "blastr-123" {
-		t.Fatalf("Send() external id = %q, want %q", receipt.ExternalID, "blastr-123")
+	if receipt.ExternalID != "gowa-123" {
+		t.Fatalf("Send() external id = %q, want %q", receipt.ExternalID, "gowa-123")
 	}
 	if receipt.HTTPStatus != http.StatusOK {
 		t.Fatalf("Send() HTTP status = %d, want %d", receipt.HTTPStatus, http.StatusOK)
-	}
-}
-
-func TestClientSendUsesProviderSuccessReceipt(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"ok":true,"senderId":"noreplay guestflow","to":"6281325308367","attemptedAt":"2026-07-18T15:23:18.383Z","sentAt":"2026-07-18T15:23:21.047Z"}`))
-	}))
-	defer server.Close()
-
-	client := NewClient(config.WhatsAppConfig{Enabled: true, APIURL: server.URL, AccountToken: "account-token", SenderToken: "sender-token"})
-	receipt, err := client.Send(context.Background(), "+62 813 2530 8367", "Halo")
-	if err != nil {
-		t.Fatalf("Send() error = %v", err)
-	}
-	if receipt.SenderID != "noreplay guestflow" || receipt.SentAt == nil || receipt.AttemptedAt == nil {
-		t.Fatalf("receipt = %#v, want provider timestamps and sender", receipt)
-	}
-	wantSentAt, _ := time.Parse(time.RFC3339Nano, "2026-07-18T15:23:21.047Z")
-	if !receipt.SentAt.Equal(wantSentAt) {
-		t.Fatalf("sent at = %s, want %s", receipt.SentAt, wantSentAt)
-	}
-}
-
-func TestClientSendTreatsProviderOKFalseAsFailure(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"ok":false,"error":"Target number is not registered on WhatsApp"}`))
-	}))
-	defer server.Close()
-
-	client := NewClient(config.WhatsAppConfig{Enabled: true, APIURL: server.URL, AccountToken: "account-token", SenderToken: "sender-token"})
-	receipt, err := client.Send(context.Background(), "081234567890", "Halo")
-	if err == nil {
-		t.Fatal("Send() error = nil, want provider rejection")
-	}
-	providerErr, ok := err.(*ProviderError)
-	if !ok {
-		t.Fatalf("Send() error type = %T, want *ProviderError", err)
-	}
-	if providerErr.StatusCode != http.StatusOK || providerErr.Message != "Target number is not registered on WhatsApp" {
-		t.Fatalf("provider error = %#v, want HTTP 200 and provider message", providerErr)
-	}
-	if receipt.HTTPStatus != http.StatusOK {
-		t.Fatalf("receipt HTTP status = %d, want %d", receipt.HTTPStatus, http.StatusOK)
 	}
 }
 
@@ -125,9 +83,8 @@ func TestClientSendPreservesProviderHTTPFailure(t *testing.T) {
 
 	client := NewClient(config.WhatsAppConfig{
 		Enabled:      true,
-		APIURL:       server.URL,
-		AccountToken: "account-token",
-		SenderToken:  "sender-token",
+		GOWAAPIURL:   server.URL,
+		GOWADeviceID: "guestflow-main",
 	})
 
 	receipt, err := client.Send(context.Background(), "081234567890", "Halo")
@@ -143,5 +100,30 @@ func TestClientSendPreservesProviderHTTPFailure(t *testing.T) {
 	}
 	if receipt.HTTPStatus != http.StatusBadRequest {
 		t.Fatalf("receipt HTTP status = %d, want %d", receipt.HTTPStatus, http.StatusBadRequest)
+	}
+}
+
+func TestClientSendTreatsGOWAErrorCodeAsFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":"INVALID_WA_CLI","message":"your WhatsApp CLI is invalid or empty"}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(config.WhatsAppConfig{
+		Enabled:      true,
+		GOWAAPIURL:   server.URL,
+		GOWADeviceID: "guestflow-main",
+	})
+	receipt, err := client.Send(context.Background(), "081234567890", "Halo")
+	if err == nil {
+		t.Fatal("Send() error = nil, want GOWA rejection")
+	}
+	providerErr, ok := err.(*ProviderError)
+	if !ok || providerErr.StatusCode != http.StatusOK || providerErr.Message != "your WhatsApp CLI is invalid or empty" {
+		t.Fatalf("provider error = %#v, want GOWA body rejection", err)
+	}
+	if receipt.HTTPStatus != http.StatusOK {
+		t.Fatalf("receipt HTTP status = %d, want %d", receipt.HTTPStatus, http.StatusOK)
 	}
 }

@@ -104,6 +104,25 @@ func (r *TenantRepository) Update(ctx context.Context, tenant *domain.Tenant) er
 	return nil
 }
 
+// WhatsAppDeviceIDInUse checks the tenant-scoped GOWA device registry stored
+// in tenant settings. The database unique index is the final race-safe guard;
+// this method lets the service return a useful validation error first.
+func (r *TenantRepository) WhatsAppDeviceIDInUse(ctx context.Context, deviceID string, excludeTenantID uuid.UUID) (bool, error) {
+	var inUse bool
+	query := `
+		SELECT EXISTS(
+			SELECT 1 FROM tenants
+			WHERE deleted_at IS NULL
+			  AND id <> $2
+			  AND settings #>> '{integrations,whatsapp,device_id}' = $1
+		)
+	`
+	if err := r.db.GetContext(ctx, &inUse, query, deviceID, excludeTenantID); err != nil {
+		return false, fmt.Errorf("failed to check WhatsApp device ownership: %w", err)
+	}
+	return inUse, nil
+}
+
 // ListByUser lists all tenants where the specified user is an active member.
 func (r *TenantRepository) ListByUser(ctx context.Context, userID uuid.UUID) ([]*domain.Tenant, error) {
 	var tenants []*domain.Tenant
