@@ -387,13 +387,37 @@ func (s *WhatsAppIntegrationService) getConnectionStatus(ctx context.Context, cf
 		state = "connected"
 	}
 	jid := firstNonEmpty(response.Results.JID, response.Results.DeviceID)
+	phoneNumber := phoneNumberFromJID(jid)
+	if response.Results.IsLoggedIn && phoneNumber == "" {
+		identityJID, identityPhone := s.getDeviceIdentity(ctx, cfg)
+		jid = firstNonEmpty(identityJID, jid)
+		phoneNumber = firstNonEmpty(phoneNumberFromJID(jid), phoneNumberFromJID(identityPhone))
+	}
 	return WhatsAppConnectionStatus{
 		State:       state,
 		Connected:   response.Results.IsConnected,
 		LoggedIn:    response.Results.IsLoggedIn,
 		JID:         jid,
-		PhoneNumber: phoneNumberFromJID(jid),
+		PhoneNumber: phoneNumber,
 	}
+}
+
+func (s *WhatsAppIntegrationService) getDeviceIdentity(ctx context.Context, cfg config.WhatsAppConfig) (string, string) {
+	path := "/devices/" + url.PathEscape(cfg.GOWADeviceID)
+	body, statusCode, err := s.doGOWA(ctx, cfg, http.MethodGet, path, nil)
+	if err != nil || statusCode < http.StatusOK || statusCode >= http.StatusMultipleChoices {
+		return "", ""
+	}
+	var response struct {
+		Results struct {
+			JID         string `json:"jid"`
+			PhoneNumber string `json:"phone_number"`
+		} `json:"results"`
+	}
+	if json.Unmarshal(body, &response) != nil {
+		return "", ""
+	}
+	return response.Results.JID, response.Results.PhoneNumber
 }
 
 func (s *WhatsAppIntegrationService) ensureGOWADevice(ctx context.Context, cfg config.WhatsAppConfig) error {
