@@ -262,15 +262,42 @@ func (s *AuthService) Login(ctx context.Context, req domain.LoginRequest) (*doma
 	return user, tokenPair, nil
 }
 
-// VerifyEmail consumes a one-time verification token.
-func (s *AuthService) VerifyEmail(ctx context.Context, rawToken string) error {
+// VerifyEmail consumes a one-time verification token and creates a session so
+// a newly verified user can continue directly to the dashboard.
+func (s *AuthService) VerifyEmail(ctx context.Context, rawToken string) (*domain.User, *auth.TokenPair, error) {
 	if !s.verifyEmailEnabled {
-		return nil
+		return nil, nil, nil
 	}
 	if strings.TrimSpace(rawToken) == "" {
-		return ErrTokenInvalid
+		return nil, nil, ErrTokenInvalid
 	}
-	return s.verificationRepo.Consume(ctx, hashVerificationToken(rawToken), time.Now().UTC())
+	userID, err := s.verificationRepo.Consume(ctx, hashVerificationToken(rawToken), time.Now().UTC())
+	if err != nil {
+		if errors.Is(err, domain.ErrInvalidInput) {
+			return nil, nil, ErrTokenInvalid
+		}
+		return nil, nil, fmt.Errorf("consume email verification: %w", err)
+	}
+
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("get verified user: %w", err)
+	}
+	if !user.IsActive() {
+		return nil, nil, ErrUserInactive
+	}
+
+	tokens, err := s.jwtService.GenerateTokenPair(user.ID, user.Email)
+	if err != nil {
+		return nil, nil, fmt.Errorf("generate verification tokens: %w", err)
+	}
+	_, rawRefreshToken, err := s.refreshSvc.Create(ctx, user.ID, "email-verification")
+	if err != nil {
+		return nil, nil, fmt.Errorf("create verification refresh token: %w", err)
+	}
+	tokens.RefreshToken = rawRefreshToken
+	user.Sanitize()
+	return user, tokens, nil
 }
 
 // ResendVerification issues a new token. It intentionally returns success for

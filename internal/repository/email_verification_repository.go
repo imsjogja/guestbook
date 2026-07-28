@@ -48,10 +48,10 @@ func (r *EmailVerificationRepository) Create(ctx context.Context, exec sqlx.ExtC
 
 // Consume verifies and atomically consumes a token, then marks the user as
 // verified. A transaction prevents a token from being used twice concurrently.
-func (r *EmailVerificationRepository) Consume(ctx context.Context, tokenHash string, now time.Time) error {
+func (r *EmailVerificationRepository) Consume(ctx context.Context, tokenHash string, now time.Time) (uuid.UUID, error) {
 	tx, err := r.db.BeginTxx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
-		return fmt.Errorf("begin email verification transaction: %w", err)
+		return uuid.Nil, fmt.Errorf("begin email verification transaction: %w", err)
 	}
 	defer tx.Rollback()
 
@@ -64,12 +64,12 @@ func (r *EmailVerificationRepository) Consume(ctx context.Context, tokenHash str
 	`, tokenHash)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return domain.ErrInvalidInput
+			return uuid.Nil, domain.ErrInvalidInput
 		}
-		return fmt.Errorf("get email verification token: %w", err)
+		return uuid.Nil, fmt.Errorf("get email verification token: %w", err)
 	}
 	if token.UsedAt != nil || !token.ExpiresAt.After(now) {
-		return domain.ErrInvalidInput
+		return uuid.Nil, domain.ErrInvalidInput
 	}
 
 	if _, err := tx.ExecContext(ctx, `
@@ -77,18 +77,18 @@ func (r *EmailVerificationRepository) Consume(ctx context.Context, tokenHash str
 		SET email_verified_at = $1, updated_at = $1
 		WHERE id = $2 AND deleted_at IS NULL
 	`, now, token.UserID); err != nil {
-		return fmt.Errorf("mark email verified: %w", err)
+		return uuid.Nil, fmt.Errorf("mark email verified: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE email_verification_tokens
 		SET used_at = $1
 		WHERE id = $2
 	`, now, token.ID); err != nil {
-		return fmt.Errorf("consume email verification token: %w", err)
+		return uuid.Nil, fmt.Errorf("consume email verification token: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit email verification transaction: %w", err)
+		return uuid.Nil, fmt.Errorf("commit email verification transaction: %w", err)
 	}
-	return nil
+	return token.UserID, nil
 }

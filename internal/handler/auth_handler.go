@@ -98,11 +98,15 @@ func (h *AuthHandler) Register(c echo.Context) error {
 }
 
 func (h *AuthHandler) VerifyEmail(c echo.Context) error {
-	if err := h.authService.VerifyEmail(c.Request().Context(), c.QueryParam("token")); err != nil {
+	user, tokens, err := h.authService.VerifyEmail(c.Request().Context(), c.QueryParam("token"))
+	if err != nil {
 		if errors.Is(err, service.ErrTokenInvalid) {
 			return c.JSON(http.StatusBadRequest, map[string]string{"message": "tautan verifikasi tidak valid atau sudah kedaluwarsa"})
 		}
 		return h.handleAuthError(c, err)
+	}
+	if tokens != nil {
+		return c.JSON(http.StatusOK, buildAuthResponse(user, tokens))
 	}
 	return c.JSON(http.StatusOK, map[string]string{"message": "email berhasil diverifikasi"})
 }
