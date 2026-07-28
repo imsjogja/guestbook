@@ -342,6 +342,8 @@ GitHub issue notifications are development-only. Set `GITHUB_ISSUE_NOTIFICATIONS
 
 The isolated development API stack is defined in `docker-compose.development.yml`. Copy `.env.development.example` to `.env.development`, fill development-only secrets, then run `docker compose -p guestflow-dev --env-file .env.development -f docker-compose.development.yml up -d --build`. In non-production, the migration tool includes the demo seed automatically. It uses separate database, Redis, GOWA, upload volumes, and host port `28080`. Configure the Caddy snippet at `deploy/caddy/api-dev.guestflow.id.caddy` and reload Caddy so `https://api-dev.guestflow.id` proxies only to this stack.
 
+For development GOWA pairing without an SSH tunnel, add an A record for `gowa-dev.guestflow.id` to the server IP and configure `deploy/caddy/gowa-dev.guestflow.id.caddy`. GOWA is bound only to `127.0.0.1:23000`; Caddy provides the HTTPS entry point and GOWA Basic Auth remains required. Open `https://gowa-dev.guestflow.id`, create or select the `guestflow-development` device, then scan the QR. Do not expose GOWA port `3000` directly to the public internet.
+
 ### RSVP Reminder Flow
 
 Reminder candidates are active event guests that hold an active invitation (`draft`, `sent`, or `opened`) and have not given a real RSVP response yet (no row, or a `not_sent`/`pending`/`no_response` row). Guests who answered `attending`, `not_attending`, or `maybe` are never reminded.

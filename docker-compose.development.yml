@@ -47,6 +47,8 @@ services:
       - guestflow_dev_gowa_data:/app/storages
     expose:
       - "3000"
+    ports:
+      - "127.0.0.1:23000:3000"
     networks:
       - guestflow_dev
 
