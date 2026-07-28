@@ -246,6 +246,7 @@ func RegisterRoutes(
 	integrations.PATCH("/whatsapp", whatsappIntegrationHandler.Update, tenantSettingsWrite)
 	integrations.POST("/whatsapp/pair", whatsappIntegrationHandler.StartPairing, tenantSettingsWrite)
 	integrations.GET("/whatsapp/qr", whatsappIntegrationHandler.GetPairingQR, tenantSettingsRead)
+	integrations.POST("/whatsapp/test", whatsappIntegrationHandler.Test, tenantSettingsWrite)
 
 	// Billing routes (protected, tenant-scoped)
 	billing := protected.Group("/billing", middleware.TenantResolver(middleware.DefaultTenantResolverConfig(db)))

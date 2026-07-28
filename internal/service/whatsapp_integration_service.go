@@ -27,6 +27,7 @@ const whatsappIntegrationSettingsKey = "whatsapp"
 var ErrWhatsAppIntegrationInvalid = errors.New("invalid WhatsApp integration settings")
 var ErrWhatsAppDeviceConflict = errors.New("WhatsApp device is already assigned to another tenant")
 var ErrWhatsAppAuthInvalid = errors.New("GOWA Basic Auth was rejected")
+var ErrWhatsAppNotReady = errors.New("WhatsApp is not connected")
 
 // WhatsAppIntegrationUpdateRequest contains tenant-level WhatsApp changes.
 type WhatsAppIntegrationUpdateRequest struct {
@@ -55,6 +56,15 @@ type WhatsAppPairingStatus struct {
 	DeviceID   string `json:"device_id"`
 	QRURL      string `json:"qr_url"`
 	QRDuration int    `json:"qr_duration,omitempty"`
+}
+
+// WhatsAppTestSendResult is returned by the connection test and is not stored
+// as a guest communication message.
+type WhatsAppTestSendResult struct {
+	To             string     `json:"to"`
+	ExternalID     string     `json:"external_id,omitempty"`
+	ProviderStatus int        `json:"provider_status,omitempty"`
+	SentAt         *time.Time `json:"sent_at,omitempty"`
 }
 
 // WhatsAppConfigProvider lets communication flows resolve tenant settings
@@ -278,6 +288,33 @@ func (s *WhatsAppIntegrationService) GetPairingQR(ctx context.Context, tenantID 
 		return nil, "", gowaResponseError(body, statusCode)
 	}
 	return body, "image/png", nil
+}
+
+// SendTest sends a small, explicit connection test without creating an
+// invitation or communication history row.
+func (s *WhatsAppIntegrationService) SendTest(ctx context.Context, tenantID uuid.UUID, to, message string) (*WhatsAppTestSendResult, error) {
+	cfg, err := s.ResolveWhatsAppConfig(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	if !cfg.Enabled || !configuredForStatus(cfg) {
+		return nil, ErrWhatsAppIntegrationInvalid
+	}
+	connection := s.getConnectionStatus(ctx, cfg)
+	if !connection.LoggedIn {
+		return nil, fmt.Errorf("%w: %s", ErrWhatsAppNotReady, connection.State)
+	}
+	s.client.SetTenantConfig(tenantID, cfg)
+	receipt, err := s.client.SendFor(ctx, tenantID, to, message)
+	if err != nil {
+		return nil, err
+	}
+	return &WhatsAppTestSendResult{
+		To:             to,
+		ExternalID:     receipt.ExternalID,
+		ProviderStatus: receipt.HTTPStatus,
+		SentAt:         receipt.SentAt,
+	}, nil
 }
 
 func (s *WhatsAppIntegrationService) getConnectionStatus(ctx context.Context, cfg config.WhatsAppConfig) WhatsAppConnectionStatus {

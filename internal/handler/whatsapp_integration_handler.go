@@ -3,13 +3,20 @@ package handler
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"guestflow/internal/service"
+	"guestflow/internal/whatsapp"
 	appresponse "guestflow/pkg/response"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
+
+type whatsappTestRequest struct {
+	To      string `json:"to"`
+	Message string `json:"message"`
+}
 
 // WhatsAppIntegrationHandler exposes safe tenant-scoped provider settings.
 type WhatsAppIntegrationHandler struct {
@@ -95,4 +102,49 @@ func (h *WhatsAppIntegrationHandler) GetPairingQR(c echo.Context) error {
 		return appresponse.NotFound(c, "WhatsApp pairing QR")
 	}
 	return c.Blob(http.StatusOK, contentType, body)
+}
+
+// Test sends a tenant-scoped test message without requiring an event guest.
+func (h *WhatsAppIntegrationHandler) Test(c echo.Context) error {
+	tenantID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return appresponse.BadRequest(c, "Invalid tenant ID")
+	}
+	var req whatsappTestRequest
+	if err := c.Bind(&req); err != nil {
+		return appresponse.BadRequest(c, "Invalid request body")
+	}
+	if strings.TrimSpace(req.To) == "" {
+		return appresponse.ValidationError(c, "Nomor tujuan wajib diisi")
+	}
+	if strings.TrimSpace(req.Message) == "" {
+		return appresponse.ValidationError(c, "Pesan uji wajib diisi")
+	}
+	result, err := h.service.SendTest(c.Request().Context(), tenantID, req.To, req.Message)
+	if err != nil {
+		var providerErr *whatsapp.ProviderError
+		if errors.As(err, &providerErr) {
+			message := strings.ToLower(providerErr.Message)
+			if strings.Contains(message, "not registered") || strings.Contains(message, "not on whatsapp") {
+				return appresponse.ValidationError(c, "Nomor tujuan belum terdaftar di WhatsApp")
+			}
+			if providerErr.StatusCode == http.StatusUnauthorized {
+				return appresponse.ServiceUnavailable(c, "Koneksi WhatsApp belum dapat digunakan")
+			}
+			return appresponse.ServiceUnavailable(c, "Pesan uji WhatsApp gagal dikirim")
+		}
+		switch {
+		case errors.Is(err, service.ErrWhatsAppIntegrationInvalid):
+			return appresponse.ValidationError(c, "Aktifkan dan lengkapi koneksi WhatsApp terlebih dahulu")
+		case errors.Is(err, service.ErrWhatsAppNotReady), errors.Is(err, service.ErrWhatsAppAuthInvalid):
+			return appresponse.ServiceUnavailable(c, "WhatsApp belum terhubung")
+		case errors.Is(err, whatsapp.ErrPhoneMissing), errors.Is(err, whatsapp.ErrInvalidPhone):
+			return appresponse.ValidationError(c, "Nomor tujuan WhatsApp tidak valid")
+		case errors.Is(err, whatsapp.ErrNotConfigured):
+			return appresponse.ServiceUnavailable(c, "WhatsApp belum dikonfigurasi")
+		default:
+			return appresponse.ServiceUnavailable(c, "Pesan uji WhatsApp gagal dikirim")
+		}
+	}
+	return appresponse.Success(c, result)
 }
