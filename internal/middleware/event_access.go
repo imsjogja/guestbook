@@ -19,7 +19,11 @@ type EventAccessChecker interface {
 func RequireEventPermission(accessService EventAccessChecker, permission string) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			tenantID, err := uuid.Parse(c.Param("id"))
+			tenantIDValue := c.Param("id")
+			if tenantIDValue == "" {
+				tenantIDValue = c.Param("tenantId")
+			}
+			tenantID, err := uuid.Parse(tenantIDValue)
 			if err != nil {
 				return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid tenant id"})
 			}

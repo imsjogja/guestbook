@@ -54,6 +54,21 @@ services:
       - guestflow
 
   # ---------------------------------------------------------------------------
+  # Mailpit - local SMTP inbox for email verification testing
+  # ---------------------------------------------------------------------------
+  mailpit:
+    image: axllent/mailpit:v1.21
+    container_name: guestflow-mailpit
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    expose:
+      - "1025"
+    networks:
+      - guestflow
+
+  # ---------------------------------------------------------------------------
   # Database migrations
   # ---------------------------------------------------------------------------
   migrate:
@@ -119,6 +134,7 @@ services:
     environment:
       APP_ENV: development
       APP_PORT: 8080
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL:-http://localhost:3000}
       DB_HOST: db
       DB_PORT: 5432
       DB_NAME: guestflow
@@ -139,14 +155,14 @@ services:
       WHATSAPP_GOWA_USERNAME: ${WHATSAPP_GOWA_USERNAME:-gowa-user}
       WHATSAPP_GOWA_PASSWORD: ${WHATSAPP_GOWA_PASSWORD:-gowa-pass}
       WHATSAPP_GOWA_WEBHOOK_SECRET: ${WHATSAPP_GOWA_WEBHOOK_SECRET:-local-gowa-webhook-secret}
-      EMAIL_ENABLED: ${EMAIL_ENABLED:-false}
-      EMAIL_HOST: ${EMAIL_HOST:-}
-      EMAIL_PORT: ${EMAIL_PORT:-587}
+      EMAIL_ENABLED: ${EMAIL_ENABLED:-true}
+      EMAIL_HOST: ${EMAIL_HOST:-mailpit}
+      EMAIL_PORT: ${EMAIL_PORT:-1025}
       EMAIL_USER: ${EMAIL_USER:-}
       EMAIL_PASSWORD: ${EMAIL_PASSWORD:-}
-      EMAIL_FROM: ${EMAIL_FROM:-}
-      EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-}
-      EMAIL_USE_TLS: ${EMAIL_USE_TLS:-true}
+      EMAIL_FROM: ${EMAIL_FROM:-no-reply@guestflow.local}
+      EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-GuestFlow Local}
+      EMAIL_USE_TLS: ${EMAIL_USE_TLS:-false}
       MIDTRANS_SERVER_KEY: ${MIDTRANS_SERVER_KEY:-}
       MIDTRANS_CLIENT_KEY: ${MIDTRANS_CLIENT_KEY:-}
       MIDTRANS_IS_PRODUCTION: ${MIDTRANS_IS_PRODUCTION:-false}
@@ -160,6 +176,8 @@ services:
       migrate:
         condition: service_completed_successfully
       gowa:
+        condition: service_started
+      mailpit:
         condition: service_started
     networks:
       - guestflow
@@ -194,14 +212,14 @@ services:
       WHATSAPP_GOWA_USERNAME: ${WHATSAPP_GOWA_USERNAME:-gowa-user}
       WHATSAPP_GOWA_PASSWORD: ${WHATSAPP_GOWA_PASSWORD:-gowa-pass}
       WHATSAPP_GOWA_WEBHOOK_SECRET: ${WHATSAPP_GOWA_WEBHOOK_SECRET:-local-gowa-webhook-secret}
-      EMAIL_ENABLED: ${EMAIL_ENABLED:-false}
-      EMAIL_HOST: ${EMAIL_HOST:-}
-      EMAIL_PORT: ${EMAIL_PORT:-587}
+      EMAIL_ENABLED: ${EMAIL_ENABLED:-true}
+      EMAIL_HOST: ${EMAIL_HOST:-mailpit}
+      EMAIL_PORT: ${EMAIL_PORT:-1025}
       EMAIL_USER: ${EMAIL_USER:-}
       EMAIL_PASSWORD: ${EMAIL_PASSWORD:-}
-      EMAIL_FROM: ${EMAIL_FROM:-}
-      EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-}
-      EMAIL_USE_TLS: ${EMAIL_USE_TLS:-true}
+      EMAIL_FROM: ${EMAIL_FROM:-no-reply@guestflow.local}
+      EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-GuestFlow Local}
+      EMAIL_USE_TLS: ${EMAIL_USE_TLS:-false}
     depends_on:
       db:
         condition: service_healthy
@@ -210,6 +228,8 @@ services:
       migrate:
         condition: service_completed_successfully
       gowa:
+        condition: service_started
+      mailpit:
         condition: service_started
     networks:
       - guestflow

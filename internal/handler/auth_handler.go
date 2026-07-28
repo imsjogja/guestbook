@@ -50,6 +50,8 @@ type registrationResponse struct {
 	Message                   string           `json:"message"`
 	EmailVerificationRequired bool             `json:"email_verification_required"`
 	User                      authUserResponse `json:"user"`
+	TenantID                  string           `json:"tenant_id"`
+	TenantRole                string           `json:"tenant_role"`
 }
 
 type refreshRequest struct {
@@ -78,7 +80,7 @@ func (h *AuthHandler) Register(c echo.Context) error {
 		return h.validationError(c, err)
 	}
 
-	user, tokens, err := h.authService.Register(c.Request().Context(), req)
+	user, tenant, tokens, err := h.authService.Register(c.Request().Context(), req)
 	if err != nil {
 		return h.handleAuthError(c, err)
 	}
@@ -88,6 +90,8 @@ func (h *AuthHandler) Register(c echo.Context) error {
 			Message:                   "registrasi berhasil. Silakan cek email untuk verifikasi akun.",
 			EmailVerificationRequired: true,
 			User:                      mapUserResponse(user),
+			TenantID:                  tenant.ID.String(),
+			TenantRole:                domain.RoleTenantOwner,
 		})
 	}
 	return c.JSON(http.StatusCreated, buildAuthResponse(user, tokens))
@@ -293,7 +297,7 @@ func (h *AuthHandler) handleAuthError(c echo.Context, err error) error {
 	case errors.Is(err, service.ErrEmailNotVerified):
 		return c.JSON(http.StatusForbidden, map[string]string{"code": "EMAIL_NOT_VERIFIED", "message": "silakan verifikasi email sebelum masuk"})
 	case errors.Is(err, service.ErrEmailDelivery):
-		return c.JSON(http.StatusServiceUnavailable, map[string]string{"message": "email belum berhasil dikirim. Silakan coba lagi."})
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"code": "EMAIL_DELIVERY_FAILED", "message": "email belum berhasil dikirim. Silakan gunakan kirim ulang verifikasi."})
 	case errors.Is(err, service.ErrUserNotFound):
 		return c.JSON(http.StatusNotFound, map[string]string{"message": "user not found"})
 	case errors.Is(err, service.ErrTokenInvalid):

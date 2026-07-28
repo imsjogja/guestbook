@@ -245,9 +245,11 @@ func RegisterRoutes(
 
 	// Billing routes (protected, tenant-scoped)
 	billing := protected.Group("/billing", middleware.TenantResolver(middleware.DefaultTenantResolverConfig(db)))
-	billing.GET("/subscription", billingHandler.GetSubscriptionStatus)
-	billing.POST("/checkout", billingHandler.Checkout)
-	billing.GET("/history", billingHandler.GetPaymentHistory)
+	billingRead := middleware.RequirePermission(rbacService, domain.PermBillingRead)
+	billingWrite := middleware.RequirePermission(rbacService, domain.PermBillingWrite)
+	billing.GET("/subscription", billingHandler.GetSubscriptionStatus, billingRead)
+	billing.POST("/checkout", billingHandler.Checkout, billingWrite)
+	billing.GET("/history", billingHandler.GetPaymentHistory, billingRead)
 
 	// Communication message routes (protected, tenant-scoped, nested under events).
 	messages := events.Group("/:eventId/messages")
@@ -273,7 +275,12 @@ func RegisterRoutes(
 	// HTMX fragment routes (protected, returns HTML partials)
 	// ------------------------------------------------------------------
 	if htmxDashboardHandler != nil {
-		htmxDashboardHandler.RegisterHTMXRoutes(e, middleware.JWTAuth(jwtService), middleware.TenantResolver(middleware.DefaultTenantResolverConfig(db)))
+		htmxDashboardHandler.RegisterHTMXRoutes(
+			e,
+			middleware.JWTAuth(jwtService),
+			middleware.TenantResolver(middleware.DefaultTenantResolverConfig(db)),
+			eventAccessService,
+		)
 	}
 
 	// ------------------------------------------------------------------

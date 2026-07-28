@@ -29,10 +29,11 @@ type User struct {
 
 // RegisterRequest captures the data needed to create a new account.
 type RegisterRequest struct {
-	Email    string `json:"email" validate:"required,email"`
-	Password string `json:"password" validate:"required,min=8"`
-	FullName string `json:"full_name" validate:"required,min=2,max=255"`
-	Phone    string `json:"phone,omitempty" validate:"omitempty,e164"`
+	Email      string `json:"email" validate:"required,email"`
+	Password   string `json:"password" validate:"required,min=8"`
+	FullName   string `json:"full_name" validate:"required,min=2,max=255"`
+	Phone      string `json:"phone,omitempty" validate:"omitempty,e164"`
+	TenantName string `json:"tenant_name,omitempty" validate:"omitempty,min=2,max=255"`
 }
 
 // LoginRequest captures the credentials required to authenticate.

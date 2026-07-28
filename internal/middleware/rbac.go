@@ -91,12 +91,19 @@ func RequireRole(rbacService *rbac.Service, roles ...string) echo.MiddlewareFunc
 func extractIDsForRBAC(c echo.Context) (tenantID, userID uuid.UUID, ok bool) {
 	tenantIDStr := c.Param("id")
 	if tenantIDStr == "" {
-		return uuid.UUID{}, uuid.UUID{}, false
-	}
-
-	tenantID, err := uuid.Parse(tenantIDStr)
-	if err != nil {
-		return uuid.UUID{}, uuid.UUID{}, false
+		// Some tenant-scoped routes, such as billing, resolve the tenant from
+		// X-Tenant-ID instead of carrying it in the URL path.
+		var resolved bool
+		tenantID, resolved = TenantIDFromContext(c.Request().Context())
+		if !resolved || tenantID == uuid.Nil {
+			return uuid.UUID{}, uuid.UUID{}, false
+		}
+	} else {
+		var err error
+		tenantID, err = uuid.Parse(tenantIDStr)
+		if err != nil {
+			return uuid.UUID{}, uuid.UUID{}, false
+		}
 	}
 
 	userID = GetUserID(c)

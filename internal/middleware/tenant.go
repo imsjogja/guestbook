@@ -66,8 +66,24 @@ func TenantResolver(config TenantResolverConfig) echo.MiddlewareFunc {
 				return next(c)
 			}
 
-			// Extract tenant ID from header
-			tenantIDStr := c.Request().Header.Get(config.HeaderName)
+			// Extract tenant ID from header. HTMX dashboard routes also carry the
+			// tenant in the URL, so use that as a fallback when no header exists.
+			headerTenantID := c.Request().Header.Get(config.HeaderName)
+			pathTenantID := c.Param("id")
+			if pathTenantID == "" {
+				pathTenantID = c.Param("tenantId")
+			}
+			if headerTenantID != "" && pathTenantID != "" {
+				headerID, headerErr := uuid.Parse(headerTenantID)
+				pathID, pathErr := uuid.Parse(pathTenantID)
+				if headerErr != nil || pathErr != nil || headerID != pathID {
+					return appresponse.Error(c, apperrors.InvalidTenant())
+				}
+			}
+			tenantIDStr := headerTenantID
+			if tenantIDStr == "" {
+				tenantIDStr = pathTenantID
+			}
 			if tenantIDStr == "" {
 				return appresponse.Error(c, apperrors.TenantRequired())
 			}
@@ -138,7 +154,7 @@ func MustGetTenantIDFromContext(ctx context.Context) (uuid.UUID, error) {
 // active status in the database. If allowSuspended is true, 'suspended' status is also permitted.
 func validateTenantExists(ctx context.Context, db *sqlx.DB, tenantID uuid.UUID, allowSuspended bool) (bool, error) {
 	var exists bool
-	
+
 	statusCheck := "('active', 'trial')"
 	if allowSuspended {
 		statusCheck = "('active', 'trial', 'suspended')"

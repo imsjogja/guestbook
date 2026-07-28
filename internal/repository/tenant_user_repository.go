@@ -24,6 +24,12 @@ func NewTenantUserRepository(db *sqlx.DB) *TenantUserRepository {
 
 // Create inserts a new tenant membership record.
 func (r *TenantUserRepository) Create(ctx context.Context, membership *domain.TenantMembership) error {
+	return r.CreateWithExecutor(ctx, r.db, membership)
+}
+
+// CreateWithExecutor inserts a membership using the supplied database
+// executor so onboarding can remain atomic.
+func (r *TenantUserRepository) CreateWithExecutor(ctx context.Context, exec sqlx.ExtContext, membership *domain.TenantMembership) error {
 	query := `
 		INSERT INTO tenant_users (
 			id, tenant_id, user_id, role, invited_by, invited_at, joined_at, status,
@@ -33,7 +39,7 @@ func (r *TenantUserRepository) Create(ctx context.Context, membership *domain.Te
 			:created_at, :updated_at
 		)
 	`
-	_, err := r.db.NamedExecContext(ctx, query, membership)
+	_, err := sqlx.NamedExecContext(ctx, exec, query, membership)
 	if err != nil {
 		return fmt.Errorf("failed to create tenant membership: %w", err)
 	}
@@ -70,7 +76,7 @@ func (r *TenantUserRepository) Get(ctx context.Context, tenantID, userID uuid.UU
 	var membership domain.TenantMembership
 	query := `
 		SELECT * FROM tenant_users
-		WHERE tenant_id = $1 AND user_id = $2 AND status <> 'inactive'
+		WHERE tenant_id = $1 AND user_id = $2 AND status = 'active'
 	`
 	err := r.db.GetContext(ctx, &membership, query, tenantID, userID)
 	if err != nil {
@@ -87,7 +93,7 @@ func (r *TenantUserRepository) UpdateRole(ctx context.Context, tenantID, userID 
 	query := `
 		UPDATE tenant_users
 		SET role = $1, updated_at = NOW()
-		WHERE tenant_id = $2 AND user_id = $3 AND status <> 'inactive'
+		WHERE tenant_id = $2 AND user_id = $3 AND status = 'active'
 	`
 	result, err := r.db.ExecContext(ctx, query, role, tenantID, userID)
 	if err != nil {
@@ -110,7 +116,7 @@ func (r *TenantUserRepository) ListByTenant(ctx context.Context, tenantID uuid.U
 	var memberships []*domain.TenantMembership
 	query := `
 		SELECT * FROM tenant_users
-		WHERE tenant_id = $1 AND status <> 'inactive'
+		WHERE tenant_id = $1 AND status = 'active'
 		ORDER BY created_at DESC
 	`
 	err := r.db.SelectContext(ctx, &memberships, query, tenantID)
@@ -140,7 +146,7 @@ func (r *TenantUserRepository) SoftDelete(ctx context.Context, tenantID, userID 
 	query := `
 		UPDATE tenant_users
 		SET status = 'inactive', updated_at = NOW()
-		WHERE tenant_id = $1 AND user_id = $2 AND status <> 'inactive'
+		WHERE tenant_id = $1 AND user_id = $2 AND status = 'active'
 	`
 	result, err := r.db.ExecContext(ctx, query, tenantID, userID)
 	if err != nil {

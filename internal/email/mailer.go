@@ -56,8 +56,11 @@ func (m *SMTPMailer) send(ctx context.Context, to, subject, body, contentType st
 	if !m.cfg.Enabled {
 		return fmt.Errorf("%w: delivery is disabled", ErrNotConfigured)
 	}
-	if strings.TrimSpace(m.cfg.Host) == "" || strings.TrimSpace(m.cfg.User) == "" || strings.TrimSpace(m.cfg.Password) == "" || strings.TrimSpace(m.cfg.From) == "" {
+	if strings.TrimSpace(m.cfg.Host) == "" || strings.TrimSpace(m.cfg.From) == "" {
 		return fmt.Errorf("%w: SMTP configuration is incomplete", ErrNotConfigured)
+	}
+	if (strings.TrimSpace(m.cfg.User) == "") != (strings.TrimSpace(m.cfg.Password) == "") {
+		return fmt.Errorf("%w: SMTP username and password must be provided together", ErrNotConfigured)
 	}
 
 	port := m.cfg.Port
@@ -93,12 +96,14 @@ func (m *SMTPMailer) send(ctx context.Context, to, subject, body, contentType st
 		}
 	}
 
-	auth := smtp.PlainAuth("", m.cfg.User, m.cfg.Password, m.cfg.Host)
-	if ok, _ := client.Extension("AUTH"); !ok {
-		return fmt.Errorf("SMTP server does not support AUTH")
-	}
-	if err := client.Auth(auth); err != nil {
-		return fmt.Errorf("authenticate SMTP client: %w", err)
+	if strings.TrimSpace(m.cfg.User) != "" {
+		auth := smtp.PlainAuth("", m.cfg.User, m.cfg.Password, m.cfg.Host)
+		if ok, _ := client.Extension("AUTH"); !ok {
+			return fmt.Errorf("SMTP server does not support AUTH")
+		}
+		if err := client.Auth(auth); err != nil {
+			return fmt.Errorf("authenticate SMTP client: %w", err)
+		}
 	}
 	if err := client.Mail(m.cfg.From); err != nil {
 		return fmt.Errorf("set SMTP sender: %w", err)

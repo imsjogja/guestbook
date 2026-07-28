@@ -69,3 +69,33 @@ func TestNewAuthEmailTokenHasPurposeAndExpiry(t *testing.T) {
 		t.Fatal("auth email token expiry is too short")
 	}
 }
+
+func TestNewRegistrationTenantCreatesOwnerWorkspace(t *testing.T) {
+	userID := uuid.MustParse("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a21")
+	tenant := newRegistrationTenant(domain.RegisterRequest{
+		FullName:   "Bambang Kusniawan",
+		TenantName: "GuestFlow Partner",
+	}, userID)
+
+	if tenant.Name != "GuestFlow Partner" {
+		t.Fatalf("unexpected tenant name: %q", tenant.Name)
+	}
+	if tenant.Slug != "guestflow-partner-a0eebc99" {
+		t.Fatalf("unexpected tenant slug: %q", tenant.Slug)
+	}
+	if tenant.Status != domain.TenantStatusTrial || tenant.TrialEndsAt == nil {
+		t.Fatalf("new registration tenant should start a trial: %+v", tenant)
+	}
+}
+
+func TestNewRegistrationTenantFallsBackToUserWorkspaceName(t *testing.T) {
+	userID := uuid.MustParse("b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22")
+	tenant := newRegistrationTenant(domain.RegisterRequest{FullName: "New Member"}, userID)
+
+	if tenant.Name != "New Member Workspace" {
+		t.Fatalf("unexpected fallback tenant name: %q", tenant.Name)
+	}
+	if tenant.Slug != "new-member-workspace-b0eebc99" {
+		t.Fatalf("unexpected fallback tenant slug: %q", tenant.Slug)
+	}
+}

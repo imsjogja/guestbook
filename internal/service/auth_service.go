@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"strings"
 	"time"
@@ -44,6 +45,8 @@ type AuthService struct {
 	tokenRepo          *repository.RefreshTokenRepository
 	verificationRepo   *repository.EmailVerificationRepository
 	actionTokenRepo    *repository.AuthEmailTokenRepository
+	tenantRepo         *repository.TenantRepository
+	tenantUserRepo     *repository.TenantUserRepository
 	mailer             email.Mailer
 	verifyEmailEnabled bool
 	publicURL          string
@@ -66,6 +69,8 @@ func NewAuthService(
 		tokenRepo:          repository.NewRefreshTokenRepository(db),
 		verificationRepo:   repository.NewEmailVerificationRepository(db),
 		actionTokenRepo:    repository.NewAuthEmailTokenRepository(db),
+		tenantRepo:         repository.NewTenantRepository(db),
+		tenantUserRepo:     repository.NewTenantUserRepository(db),
 		mailer:             mailer,
 		verifyEmailEnabled: verifyEmailEnabled,
 		publicURL:          strings.TrimRight(publicURL, "/"),
@@ -78,21 +83,23 @@ func NewAuthService(
 // verified; otherwise it keeps the development login behavior.
 //
 // Returns ErrEmailExists if the email is already registered.
-func (s *AuthService) Register(ctx context.Context, req domain.RegisterRequest) (*domain.User, *auth.TokenPair, error) {
+func (s *AuthService) Register(ctx context.Context, req domain.RegisterRequest) (*domain.User, *domain.Tenant, *auth.TokenPair, error) {
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+	req.FullName = strings.TrimSpace(req.FullName)
+	req.TenantName = strings.TrimSpace(req.TenantName)
 	// Check email uniqueness
 	exists, err := s.userRepo.EmailExists(ctx, req.Email)
 	if err != nil {
-		return nil, nil, fmt.Errorf("check email: %w", err)
+		return nil, nil, nil, fmt.Errorf("check email: %w", err)
 	}
 	if exists {
-		return nil, nil, ErrEmailExists
+		return nil, nil, nil, ErrEmailExists
 	}
 
 	// Hash password
 	passwordHash, err := auth.HashPassword(req.Password)
 	if err != nil {
-		return nil, nil, fmt.Errorf("hash password: %w", err)
+		return nil, nil, nil, fmt.Errorf("hash password: %w", err)
 	}
 
 	// Create user
@@ -113,14 +120,15 @@ func (s *AuthService) Register(ctx context.Context, req domain.RegisterRequest) 
 		var err error
 		rawVerificationToken, verificationToken, err = newVerificationToken(user.ID)
 		if err != nil {
-			return nil, nil, fmt.Errorf("create email verification token: %w", err)
+			return nil, nil, nil, fmt.Errorf("create email verification token: %w", err)
 		}
 	}
+	tenant := newRegistrationTenant(req, user.ID)
 
 	// Insert user into database within a transaction
 	tx, err := s.db.BeginTxx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
-		return nil, nil, fmt.Errorf("begin transaction: %w", err)
+		return nil, nil, nil, fmt.Errorf("begin transaction: %w", err)
 	}
 	defer tx.Rollback()
 
@@ -132,13 +140,21 @@ func (s *AuthService) Register(ctx context.Context, req domain.RegisterRequest) 
 	`
 	_, err = tx.NamedExecContext(ctx, query, user)
 	if err != nil {
-		return nil, nil, fmt.Errorf("create user: %w", err)
+		return nil, nil, nil, fmt.Errorf("create user: %w", err)
+	}
+	if err := s.tenantRepo.CreateWithExecutor(ctx, tx, tenant); err != nil {
+		return nil, nil, nil, fmt.Errorf("create onboarding tenant: %w", err)
+	}
+	membership := domain.NewTenantMembership(tenant.ID, user.ID, domain.RoleTenantOwner, nil)
+	membership.JoinedAt = &membership.CreatedAt
+	if err := s.tenantUserRepo.CreateWithExecutor(ctx, tx, membership); err != nil {
+		return nil, nil, nil, fmt.Errorf("create onboarding owner membership: %w", err)
 	}
 
 	var tokenPair *auth.TokenPair
 	if s.verifyEmailEnabled {
 		if err := s.verificationRepo.Create(ctx, tx, verificationToken); err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 	} else {
 		// Store the refresh token in the same transaction as the user. The user
@@ -147,26 +163,59 @@ func (s *AuthService) Register(ctx context.Context, req domain.RegisterRequest) 
 		// violation.
 		tokenPair, err = s.jwtService.GenerateTokenPair(user.ID, user.Email)
 		if err != nil {
-			return nil, nil, fmt.Errorf("generate tokens: %w", err)
+			return nil, nil, nil, fmt.Errorf("generate tokens: %w", err)
 		}
 		_, rawRefreshToken, err := s.refreshSvc.CreateWithExecutor(ctx, tx, user.ID, "default")
 		if err != nil {
-			return nil, nil, fmt.Errorf("create refresh token: %w", err)
+			return nil, nil, nil, fmt.Errorf("create refresh token: %w", err)
 		}
 		tokenPair.RefreshToken = rawRefreshToken
 	}
 
 	if err := tx.Commit(); err != nil {
-		return nil, nil, fmt.Errorf("commit transaction: %w", err)
+		return nil, nil, nil, fmt.Errorf("commit transaction: %w", err)
 	}
 
 	user.Sanitize()
 	if s.verifyEmailEnabled {
 		if err := s.sendVerificationEmail(ctx, user.Email, user.FullName, rawVerificationToken); err != nil {
-			return user, nil, fmt.Errorf("%w: %v", ErrEmailDelivery, err)
+			slog.Error("verification email delivery failed", "recipient", user.Email, "error", err)
+			return user, tenant, nil, fmt.Errorf("%w: %v", ErrEmailDelivery, err)
 		}
 	}
-	return user, tokenPair, nil
+	return user, tenant, tokenPair, nil
+}
+
+func newRegistrationTenant(req domain.RegisterRequest, userID uuid.UUID) *domain.Tenant {
+	name := req.TenantName
+	if name == "" {
+		name = fmt.Sprintf("%s Workspace", req.FullName)
+	}
+	slugBase := slugifyRegistrationValue(name)
+	if slugBase == "" {
+		slugBase = "workspace"
+	}
+	// The UUID suffix avoids collisions without a second non-atomic lookup.
+	slug := fmt.Sprintf("%s-%s", slugBase, userID.String()[:8])
+	return domain.NewTenant(name, slug, userID)
+}
+
+func slugifyRegistrationValue(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	var builder strings.Builder
+	lastDash := false
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			builder.WriteRune(r)
+			lastDash = false
+			continue
+		}
+		if builder.Len() > 0 && !lastDash {
+			builder.WriteByte('-')
+			lastDash = true
+		}
+	}
+	return strings.Trim(builder.String(), "-")
 }
 
 // Login authenticates a user with their email and password.
@@ -254,6 +303,7 @@ func (s *AuthService) ResendVerification(ctx context.Context, emailAddress strin
 		return fmt.Errorf("commit resend verification transaction: %w", err)
 	}
 	if err := s.sendVerificationEmail(ctx, user.Email, user.FullName, rawToken); err != nil {
+		slog.Error("verification email resend failed", "recipient", user.Email, "error", err)
 		return fmt.Errorf("%w: %v", ErrEmailDelivery, err)
 	}
 	return nil

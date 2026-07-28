@@ -24,6 +24,12 @@ func NewTenantRepository(db *sqlx.DB) *TenantRepository {
 
 // Create inserts a new tenant into the database.
 func (r *TenantRepository) Create(ctx context.Context, tenant *domain.Tenant) error {
+	return r.CreateWithExecutor(ctx, r.db, tenant)
+}
+
+// CreateWithExecutor inserts a tenant using the supplied database executor.
+// It keeps onboarding tenant creation in the same transaction as the owner.
+func (r *TenantRepository) CreateWithExecutor(ctx context.Context, exec sqlx.ExtContext, tenant *domain.Tenant) error {
 	query := `
 		INSERT INTO tenants (
 			id, name, slug, description, logo_url, primary_color, settings, status, trial_ends_at,
@@ -33,7 +39,7 @@ func (r *TenantRepository) Create(ctx context.Context, tenant *domain.Tenant) er
 			:created_at, :updated_at
 		)
 	`
-	_, err := r.db.NamedExecContext(ctx, query, tenant)
+	_, err := sqlx.NamedExecContext(ctx, exec, query, tenant)
 	if err != nil {
 		return fmt.Errorf("failed to create tenant: %w", err)
 	}

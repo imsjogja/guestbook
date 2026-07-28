@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"guestflow/internal/domain"
+	"guestflow/internal/middleware"
 	"guestflow/internal/service"
 
 	"github.com/google/uuid"
@@ -112,6 +114,7 @@ func (h *HTMXDashboardHandler) RegisterHTMXRoutes(
 	e *echo.Echo,
 	jwtAuth echo.MiddlewareFunc,
 	enforceTenant echo.MiddlewareFunc,
+	eventAccess middleware.EventAccessChecker,
 ) {
 	htmx := e.Group("/htmx")
 	htmx.Use(jwtAuth)
@@ -120,11 +123,16 @@ func (h *HTMXDashboardHandler) RegisterHTMXRoutes(
 	dash := htmx.Group("/dashboard/:tenantId/:eventId")
 	dash.Use(enforceTenant)
 
-	dash.GET("/stats", h.GetStatsCards)
-	dash.GET("/checkins", h.GetRecentCheckinsFragment)
-	dash.GET("/rsvp", h.GetRSVPBreakdownFragment)
-	dash.GET("/activity", h.GetActivityFeedFragment)
-	dash.GET("/guest-search", h.SearchGuestsFragment)
+	dashboardRead := middleware.RequireEventPermission(eventAccess, domain.PermReportRead)
+	checkinRead := middleware.RequireEventPermission(eventAccess, domain.PermCheckinRead)
+	rsvpRead := middleware.RequireEventPermission(eventAccess, domain.PermRSVPRead)
+	guestRead := middleware.RequireEventPermission(eventAccess, domain.PermGuestRead)
+
+	dash.GET("/stats", h.GetStatsCards, dashboardRead)
+	dash.GET("/checkins", h.GetRecentCheckinsFragment, checkinRead)
+	dash.GET("/rsvp", h.GetRSVPBreakdownFragment, rsvpRead)
+	dash.GET("/activity", h.GetActivityFeedFragment, dashboardRead)
+	dash.GET("/guest-search", h.SearchGuestsFragment, guestRead)
 }
 
 // ---------------------------------------------------------------------------
@@ -191,20 +199,20 @@ func (h *HTMXDashboardHandler) GetStatsCards(c echo.Context) error {
 			ProgressColor:   "amber",
 		},
 		{
-			Title:  "Belum Respons",
-			Value:  formatInt(dashboard.RSVP.NoResponse),
-			Icon:   "⏳",
-			Color:  "rose",
-			Label:  "follow-up",
-			Badge:  fmt.Sprintf("%.0f%%", dashboard.RSVP.ResponseRate),
+			Title:      "Belum Respons",
+			Value:      formatInt(dashboard.RSVP.NoResponse),
+			Icon:       "⏳",
+			Color:      "rose",
+			Label:      "follow-up",
+			Badge:      fmt.Sprintf("%.0f%%", dashboard.RSVP.ResponseRate),
 			BadgeColor: "gray",
 		},
 		{
-			Title:  "Walk-in",
-			Value:  formatInt(dashboard.Checkin.WalkIns),
-			Icon:   "🚶",
-			Color:  "blue",
-			Badge:  "Hari ini",
+			Title:      "Walk-in",
+			Value:      formatInt(dashboard.Checkin.WalkIns),
+			Icon:       "🚶",
+			Color:      "blue",
+			Badge:      "Hari ini",
 			BadgeColor: "gray",
 		},
 	}
@@ -358,8 +366,8 @@ func (h *HTMXDashboardHandler) GetActivityFeedFragment(c echo.Context) error {
 				template.HTMLEscapeString(guestName),
 				methodLabel,
 				ci.ActualPax)),
-			TimeAgo: formatTimeAgo(&ci.CreatedAt),
-			Badge:   "Check-in",
+			TimeAgo:    formatTimeAgo(&ci.CreatedAt),
+			Badge:      "Check-in",
 			BadgeColor: "green",
 		})
 	}
@@ -395,8 +403,8 @@ func (h *HTMXDashboardHandler) GetActivityFeedFragment(c echo.Context) error {
 				template.HTMLEscapeString(guestName),
 				statusLabel,
 				rsvp.AttendingPax)),
-			TimeAgo: formatTimeAgo(rsvp.RespondedAt),
-			Badge:   statusLabel,
+			TimeAgo:    formatTimeAgo(rsvp.RespondedAt),
+			Badge:      statusLabel,
 			BadgeColor: statusColor,
 		})
 	}
@@ -429,8 +437,8 @@ func (h *HTMXDashboardHandler) GetActivityFeedFragment(c echo.Context) error {
 			Message: template.HTML(fmt.Sprintf("Pesan %s ke <strong>%s</strong>",
 				msg.Channel,
 				template.HTMLEscapeString(guestName))),
-			TimeAgo: formatTimeAgo(msg.SentAt),
-			Badge:   msg.Status,
+			TimeAgo:    formatTimeAgo(msg.SentAt),
+			Badge:      msg.Status,
 			BadgeColor: messageStatusColor(msg.Status),
 		})
 	}
