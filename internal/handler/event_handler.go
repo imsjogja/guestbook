@@ -132,7 +132,7 @@ func (h *EventHandler) GetSelfCheckinQR(c echo.Context) error {
 	}
 	baseURL := h.publicURL
 	if baseURL == "" {
-		baseURL = "https://guestflow.id"
+		baseURL = "http://localhost:3000"
 	}
 	return response.Success(c, domain.EventSelfCheckinQR{
 		EventID: event.ID,

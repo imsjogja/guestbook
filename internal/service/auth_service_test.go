@@ -39,7 +39,7 @@ func TestSendVerificationEmailBuildsPublicVerificationURL(t *testing.T) {
 	mailer := &captureMailer{}
 	service := &AuthService{
 		mailer:    mailer,
-		publicURL: "https://guestflow.id/",
+		publicURL: "https://app.guestflow.id/",
 	}
 
 	if err := service.sendVerificationEmail(context.Background(), "member@example.com", "Member", "raw-token"); err != nil {
@@ -48,7 +48,7 @@ func TestSendVerificationEmailBuildsPublicVerificationURL(t *testing.T) {
 	if mailer.to != "member@example.com" || mailer.subject == "" {
 		t.Fatalf("unexpected captured email metadata: %+v", mailer)
 	}
-	if !strings.Contains(mailer.body, "https://guestflow.id/verify-email?token=raw-token") {
+	if !strings.Contains(mailer.body, "https://app.guestflow.id/verify-email?token=raw-token") {
 		t.Fatalf("verification URL missing from email body: %s", mailer.body)
 	}
 	if !strings.Contains(mailer.body, "berlaku selama 24 jam") {

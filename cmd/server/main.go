@@ -227,6 +227,7 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 	guestGiftService := service.NewGuestGiftService(guestGiftRepo, eventGuestRepo, auditService)
 	householdService := service.NewHouseholdService(householdRepo, guestRepo, auditService)
 	invitationService := service.NewInvitationService(invitationRepo, eventRepo, rsvpRepo, guestRepo, eventGuestRepo, auditService)
+	invitationService.SetBaseURL(strings.TrimRight(cfg.App.PublicURL, "/") + "/i")
 	rsvpService := service.NewRSVPService(rsvpRepo, invitationRepo, eventRepo, eventGuestRepo, auditService)
 	checkinService := service.NewCheckinService(checkinRepo, guestRepo, invitationRepo, rsvpRepo, eventGuestRepo, eventRepo, seatingRepo, auditService)
 	seatingService := service.NewSeatingService(seatingRepo, guestRepo, eventGuestRepo, auditService)

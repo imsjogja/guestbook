@@ -20,8 +20,9 @@ const (
 	// 32 bytes = 256 bits of entropy.
 	invitationTokenBytes = 32
 
-	// invitationBaseURL is the base URL for invitation links.
-	invitationBaseURL = "https://guestflow.id/i"
+	// invitationBaseURL is the local development base URL for invitation links.
+	// Production overrides it from APP_PUBLIC_URL during server startup.
+	invitationBaseURL = "http://localhost:3000/i"
 )
 
 // InvitationService encapsulates business logic for invitation operations.
