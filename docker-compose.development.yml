@@ -1,0 +1,115 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:?DB_USER is required}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      POSTGRES_DB: ${DB_NAME:?DB_NAME is required}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - guestflow_dev_postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - guestflow_dev
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - guestflow_dev_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - guestflow_dev
+
+  gowa:
+    image: ghcr.io/aldinokemal/go-whatsapp-web-multidevice:v8.6.0
+    restart: unless-stopped
+    environment:
+      APP_PORT: 3000
+      APP_BASIC_AUTH: ${GOWA_BASIC_AUTH:?GOWA_BASIC_AUTH is required}
+      APP_OS: GuestFlow Development
+      WHATSAPP_ACCOUNT_VALIDATION: "false"
+      WHATSAPP_WEBHOOK: http://app:8080/api/v1/webhooks/gowa
+      WHATSAPP_WEBHOOK_SECRET: ${WHATSAPP_GOWA_WEBHOOK_SECRET:?WHATSAPP_GOWA_WEBHOOK_SECRET is required}
+      WHATSAPP_WEBHOOK_EVENTS: message.ack
+    volumes:
+      - guestflow_dev_gowa_data:/app/storages
+    expose:
+      - "3000"
+    networks:
+      - guestflow_dev
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: final
+    env_file:
+      - ${GUESTFLOW_DEV_ENV_FILE:-.env.development}
+    environment:
+      APP_ENV: development
+      DB_HOST: db
+      REDIS_HOST: redis
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint: ["/app/migrate"]
+    command: ["up"]
+    networks:
+      - guestflow_dev
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: final
+    restart: unless-stopped
+    env_file:
+      - ${GUESTFLOW_DEV_ENV_FILE:-.env.development}
+    environment:
+      APP_ENV: development
+      APP_DEBUG: "false"
+      APP_PUBLIC_URL: https://api-dev.guestflow.id
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: 8080
+      DB_HOST: db
+      REDIS_HOST: redis
+      STORAGE_LOCAL_PATH: /data/uploads
+      WHATSAPP_GOWA_API_URL: http://gowa:3000
+    ports:
+      - "127.0.0.1:28080:8080"
+    volumes:
+      - guestflow_dev_uploads:/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      gowa:
+        condition: service_started
+    networks:
+      - guestflow_dev
+
+volumes:
+  guestflow_dev_postgres_data:
+  guestflow_dev_redis_data:
+  guestflow_dev_gowa_data:
+  guestflow_dev_uploads:
+
+networks:
+  guestflow_dev:
+    name: guestflow_dev
+    driver: bridge

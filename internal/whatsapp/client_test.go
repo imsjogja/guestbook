@@ -2,6 +2,7 @@ package whatsapp
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -32,6 +33,23 @@ func TestNormalizePhone(t *testing.T) {
 				t.Fatalf("NormalizePhone() error = %v, want %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestNormalizeTargetAcceptsGroupJIDOnlyForGenericTargets(t *testing.T) {
+	got, err := normalizeTarget("120363402106123456@g.us", true)
+	if err != nil {
+		t.Fatalf("normalizeTarget() error = %v", err)
+	}
+	if got != "120363402106123456@g.us" {
+		t.Fatalf("normalizeTarget() = %q", got)
+	}
+
+	if _, err := normalizeTarget("120363402106123456@g.us", false); err != ErrInvalidPhone {
+		t.Fatalf("normalizeTarget() without groups error = %v, want %v", err, ErrInvalidPhone)
+	}
+	if _, err := normalizeTarget("group@g.us", true); err != ErrInvalidTarget {
+		t.Fatalf("normalizeTarget() invalid group error = %v, want %v", err, ErrInvalidTarget)
 	}
 }
 
@@ -71,6 +89,32 @@ func TestClientSendUsesGOWAHeadersAndPayload(t *testing.T) {
 	}
 	if receipt.HTTPStatus != http.StatusOK {
 		t.Fatalf("Send() HTTP status = %d, want %d", receipt.HTTPStatus, http.StatusOK)
+	}
+}
+
+func TestClientSendToSupportsGroupJID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload struct {
+			Phone string `json:"phone"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode payload: %v", err)
+		}
+		if payload.Phone != "120363402106123456@g.us" {
+			t.Errorf("recipient = %q", payload.Phone)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":"SUCCESS","results":{"message_id":"group-1"}}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(config.WhatsAppConfig{
+		Enabled:      true,
+		GOWAAPIURL:   server.URL,
+		GOWADeviceID: "guestflow-main",
+	})
+	if _, err := client.SendTo(context.Background(), "120363402106123456@g.us", "Halo grup"); err != nil {
+		t.Fatalf("SendTo() error = %v", err)
 	}
 }
 

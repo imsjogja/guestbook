@@ -23,6 +23,7 @@ var (
 	ErrNotConfigured = errors.New("whatsapp provider is not configured")
 	ErrPhoneMissing  = errors.New("guest WhatsApp number is empty")
 	ErrInvalidPhone  = errors.New("guest WhatsApp number is invalid")
+	ErrInvalidTarget = errors.New("WhatsApp recipient is invalid")
 )
 
 // SendReceipt records the provider acknowledgement for one send attempt.
@@ -43,6 +44,7 @@ type ProviderError struct {
 func (e *ProviderError) Error() string { return e.Message }
 
 var phoneDigits = regexp.MustCompile(`[^0-9]`)
+var groupJID = regexp.MustCompile(`^[0-9][0-9-]{5,}@g\.us$`)
 
 // Client sends WhatsApp messages through GOWA.
 type Client struct {
@@ -93,18 +95,25 @@ func NormalizePhone(raw string) (string, error) {
 }
 
 func (c *Client) Send(ctx context.Context, to, message string) (SendReceipt, error) {
-	return c.sendWithConfig(ctx, c.configForTenant(uuid.Nil), to, message)
+	return c.sendWithConfig(ctx, c.configForTenant(uuid.Nil), to, message, false)
 }
 
 func (c *Client) SendFor(ctx context.Context, tenantID uuid.UUID, to, message string) (SendReceipt, error) {
-	return c.sendWithConfig(ctx, c.configForTenant(tenantID), to, message)
+	return c.sendWithConfig(ctx, c.configForTenant(tenantID), to, message, false)
 }
 
-func (c *Client) sendWithConfig(ctx context.Context, cfg config.WhatsAppConfig, to, message string) (SendReceipt, error) {
+// SendTo sends to a WhatsApp phone number or group JID. It is intended for
+// platform-level integrations such as development notifications. Guest
+// delivery should continue using SendFor, which only accepts phone numbers.
+func (c *Client) SendTo(ctx context.Context, to, message string) (SendReceipt, error) {
+	return c.sendWithConfig(ctx, c.configForTenant(uuid.Nil), to, message, true)
+}
+
+func (c *Client) sendWithConfig(ctx context.Context, cfg config.WhatsAppConfig, to, message string, allowGroup bool) (SendReceipt, error) {
 	if !configured(cfg) {
 		return SendReceipt{}, ErrNotConfigured
 	}
-	phone, err := NormalizePhone(to)
+	target, err := normalizeTarget(to, allowGroup)
 	if err != nil {
 		return SendReceipt{}, err
 	}
@@ -112,7 +121,18 @@ func (c *Client) sendWithConfig(ctx context.Context, cfg config.WhatsAppConfig, 
 		return SendReceipt{}, errors.New("whatsapp message is empty")
 	}
 
-	return c.sendGOWA(ctx, cfg, phone, message)
+	return c.sendGOWA(ctx, cfg, target, message)
+}
+
+func normalizeTarget(raw string, allowGroup bool) (string, error) {
+	value := strings.TrimSpace(raw)
+	if allowGroup && strings.Contains(value, "@") {
+		if groupJID.MatchString(value) {
+			return value, nil
+		}
+		return "", ErrInvalidTarget
+	}
+	return NormalizePhone(value)
 }
 
 func (c *Client) sendGOWA(ctx context.Context, cfg config.WhatsAppConfig, phone, message string) (SendReceipt, error) {

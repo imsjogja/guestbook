@@ -29,6 +29,7 @@ func RegisterRoutes(
 	communicationHandler *CommunicationHandler,
 	whatsappIntegrationHandler *WhatsAppIntegrationHandler,
 	gowaWebhookHandler *GOWAWebhookHandler,
+	githubIssueNotificationHandler *GitHubIssueNotificationHandler,
 	dashboardHandler *DashboardHandler,
 	invitationSiteHandler *InvitationSiteHandler,
 	htmxDashboardHandler *HTMXDashboardHandler,
@@ -63,6 +64,9 @@ func RegisterRoutes(
 	api.POST("/rsvp", rsvpHandler.Submit)
 	if gowaWebhookHandler != nil {
 		api.POST("/webhooks/gowa", gowaWebhookHandler.Handle)
+	}
+	if githubIssueNotificationHandler != nil {
+		api.POST("/webhooks/github/issues", githubIssueNotificationHandler.Handle)
 	}
 
 	// Protected routes require valid JWT.

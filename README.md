@@ -338,6 +338,10 @@ Each tenant receives an isolated device ID in the form `guestflow-<tenant_uuid>`
 
 Required environment variables are `WHATSAPP_ENABLED=true`, `WHATSAPP_GOWA_API_URL`, `WHATSAPP_GOWA_DEVICE_ID`, `WHATSAPP_GOWA_USERNAME`, `WHATSAPP_GOWA_PASSWORD`, `WHATSAPP_GOWA_WEBHOOK_SECRET`, and `GOWA_BASIC_AUTH`. Keep GOWA internal to the Docker network; do not publish port 3000 directly in production.
 
+GitHub issue notifications are development-only. Set `GITHUB_ISSUE_NOTIFICATIONS_ENABLED=true` only on the development backend, alongside `GITHUB_ISSUE_WEBHOOK_TOKEN`, `GITHUB_ISSUE_WHATSAPP_TO`, and the explicit `GITHUB_ISSUE_ALLOWED_REPOSITORIES` allowlist. Production must keep the flag false or unset, so the relay route is not registered. In each repository, configure a GitHub Environment named `development` with Actions secrets `GUESTFLOW_GITHUB_WEBHOOK_URL` and `GUESTFLOW_GITHUB_WEBHOOK_TOKEN`; the workflow sends issue opened, assigned, closed, reopened, and labeled events to the development relay. The workflow never connects directly to the internal GOWA container or production device. Delivery IDs are deduplicated in the running development process to avoid duplicate sends from Actions retries.
+
+The isolated development API stack is defined in `docker-compose.development.yml`. Copy `.env.development.example` to `.env.development`, fill development-only secrets, then run `docker compose -p guestflow-dev --env-file .env.development -f docker-compose.development.yml up -d --build`. In non-production, the migration tool includes the demo seed automatically. It uses separate database, Redis, GOWA, upload volumes, and host port `28080`. Configure the Caddy snippet at `deploy/caddy/api-dev.guestflow.id.caddy` and reload Caddy so `https://api-dev.guestflow.id` proxies only to this stack.
+
 ### RSVP Reminder Flow
 
 Reminder candidates are active event guests that hold an active invitation (`draft`, `sent`, or `opened`) and have not given a real RSVP response yet (no row, or a `not_sent`/`pending`/`no_response` row). Guests who answered `attending`, `not_attending`, or `maybe` are never reminded.
@@ -463,6 +467,10 @@ All configuration is via environment variables. Copy `.env.example` to `.env` an
 | `WHATSAPP_GOWA_USERNAME` | GOWA Basic Auth username | *(required when enabled)* |
 | `WHATSAPP_GOWA_PASSWORD` | GOWA Basic Auth password | *(required when enabled)* |
 | `WHATSAPP_GOWA_WEBHOOK_SECRET` | HMAC secret shared with GOWA | *(required for receipts)* |
+| `GITHUB_ISSUE_WEBHOOK_TOKEN` | Bearer token accepted by the GitHub issue notification relay | *(required to enable issue notifications)* |
+| `GITHUB_ISSUE_WHATSAPP_TO` | Comma/space-separated WhatsApp recipients for issue notifications; accepts phone numbers or GOWA Group JID such as `120363...@g.us` | *(required to enable issue notifications)* |
+| `GITHUB_ISSUE_ALLOWED_REPOSITORIES` | Comma/space-separated repository allowlist accepted by the relay | *(required to enable issue notifications)* |
+| `GITHUB_ISSUE_NOTIFICATIONS_ENABLED` | Enables the development-only GitHub issue relay | `false` |
 | `GOWA_BASIC_AUTH` | Basic Auth accepted by the GOWA container | *(required in production)* |
 | `CAMPAIGNS_ENABLED` | Enable campaign/broadcast API (research feature) | `false` |
 

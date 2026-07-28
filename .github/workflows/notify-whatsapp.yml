@@ -1,0 +1,45 @@
+name: Notify issue to WhatsApp
+
+on:
+  issues:
+    types: [opened, assigned, closed, reopened, labeled]
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    name: Notify GuestFlow WhatsApp relay
+    environment: development
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send issue event to GuestFlow
+        env:
+          WEBHOOK_URL: ${{ secrets.GUESTFLOW_GITHUB_WEBHOOK_URL }}
+          WEBHOOK_TOKEN: ${{ secrets.GUESTFLOW_GITHUB_WEBHOOK_TOKEN }}
+          EVENT_ACTION: ${{ github.event.action }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          : "${WEBHOOK_URL:?GUESTFLOW_GITHUB_WEBHOOK_URL secret is required}"
+          : "${WEBHOOK_TOKEN:?GUESTFLOW_GITHUB_WEBHOOK_TOKEN secret is required}"
+
+          title="$(jq -r '.issue.title // ""' "$GITHUB_EVENT_PATH")"
+          issue_number="$(jq -r '.issue.number // 0' "$GITHUB_EVENT_PATH")"
+          issue_url="$(jq -r '.issue.html_url // ""' "$GITHUB_EVENT_PATH")"
+
+          jq -n \
+            --arg action "$EVENT_ACTION" \
+            --arg repository "$REPOSITORY" \
+            --arg title "$title" \
+            --arg issue_url "$issue_url" \
+            --arg delivery_id "${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --argjson issue_number "$issue_number" \
+            '{action: $action, repository: $repository, issue_number: $issue_number, title: $title, issue_url: $issue_url, delivery_id: $delivery_id}' \
+            > payload.json
+
+          curl --fail-with-body --silent --show-error --retry 3 --max-time 20 \
+            -X POST "$WEBHOOK_URL" \
+            -H "Authorization: Bearer $WEBHOOK_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data-binary @payload.json

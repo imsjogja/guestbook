@@ -27,6 +27,7 @@ type Config struct {
 	RateLimit RateLimitConfig `mapstructure:"rate_limit"`
 	Midtrans  MidtransConfig  `mapstructure:"midtrans"`
 	Features  FeatureConfig   `mapstructure:"features"`
+	GitHub    GitHubConfig    `mapstructure:"github"`
 }
 
 // AppConfig contains general application settings.
@@ -107,6 +108,16 @@ type WhatsAppConfig struct {
 	GOWAUsername      string `mapstructure:"gowa_username"`
 	GOWAPassword      string `mapstructure:"gowa_password"`
 	GOWAWebhookSecret string `mapstructure:"gowa_webhook_secret"`
+}
+
+// GitHubConfig contains the protected outbound notification settings used by
+// GitHub Actions. The WhatsApp device and provider credentials remain in
+// WhatsAppConfig; this section only controls the inbound relay contract.
+type GitHubConfig struct {
+	IssueNotificationsEnabled bool   `mapstructure:"issue_notifications_enabled"`
+	IssueWebhookToken         string `mapstructure:"issue_webhook_token"`
+	IssueWhatsAppTo           string `mapstructure:"issue_whatsapp_to"`
+	IssueAllowedRepositories  string `mapstructure:"issue_allowed_repositories"`
 }
 
 // EmailConfig contains SMTP email settings.
@@ -289,6 +300,7 @@ func setDefaults(v *viper.Viper) {
 
 	// Feature defaults
 	v.SetDefault("features.campaigns_enabled", false)
+	v.SetDefault("github.issue_notifications_enabled", false)
 }
 
 // bindEnvs explicitly binds environment variables to config keys.
@@ -338,6 +350,10 @@ func bindEnvs(v *viper.Viper) {
 		{"whatsapp.gowa_username", "WHATSAPP_GOWA_USERNAME"},
 		{"whatsapp.gowa_password", "WHATSAPP_GOWA_PASSWORD"},
 		{"whatsapp.gowa_webhook_secret", "WHATSAPP_GOWA_WEBHOOK_SECRET"},
+		{"github.issue_notifications_enabled", "GITHUB_ISSUE_NOTIFICATIONS_ENABLED"},
+		{"github.issue_webhook_token", "GITHUB_ISSUE_WEBHOOK_TOKEN"},
+		{"github.issue_whatsapp_to", "GITHUB_ISSUE_WHATSAPP_TO"},
+		{"github.issue_allowed_repositories", "GITHUB_ISSUE_ALLOWED_REPOSITORIES"},
 		{"email.enabled", "EMAIL_ENABLED"},
 		{"email.host", "EMAIL_HOST"},
 		{"email.port", "EMAIL_PORT"},
@@ -383,6 +399,18 @@ func validate(cfg *Config) error {
 
 	if cfg.Server.Port <= 0 || cfg.Server.Port > 65535 {
 		return fmt.Errorf("SERVER_PORT must be a valid port number (1-65535)")
+	}
+
+	if cfg.GitHub.IssueNotificationsEnabled {
+		if strings.TrimSpace(cfg.GitHub.IssueWebhookToken) == "" {
+			return fmt.Errorf("GITHUB_ISSUE_WEBHOOK_TOKEN is required when issue notifications are enabled")
+		}
+		if strings.TrimSpace(cfg.GitHub.IssueWhatsAppTo) == "" {
+			return fmt.Errorf("GITHUB_ISSUE_WHATSAPP_TO is required when issue notifications are enabled")
+		}
+		if strings.TrimSpace(cfg.GitHub.IssueAllowedRepositories) == "" {
+			return fmt.Errorf("GITHUB_ISSUE_ALLOWED_REPOSITORIES is required when issue notifications are enabled")
+		}
 	}
 
 	return nil

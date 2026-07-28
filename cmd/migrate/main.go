@@ -63,7 +63,7 @@ func main() {
 	}
 	command := args[0]
 
-	filteredDir, cleanup, err := prepareMigrationDir(command, migrationsDir)
+	filteredDir, cleanup, err := prepareMigrationDir(command, migrationsDir, cfg.App.Env)
 	if err != nil {
 		log.Fatalf("Failed to prepare migrations: %v", err)
 	}
@@ -134,7 +134,7 @@ func redactPassword(connStr string) string {
 	return connStr
 }
 
-func prepareMigrationDir(command, srcDir string) (string, func(), error) {
+func prepareMigrationDir(command, srcDir, appEnv string) (string, func(), error) {
 	switch command {
 	case "up", "up-by-one", "up-to", "status", "version":
 		tempDir, err := os.MkdirTemp("", "guestflow-migrations-*")
@@ -160,8 +160,9 @@ func prepareMigrationDir(command, srcDir string) (string, func(), error) {
 			if strings.HasSuffix(name, ".down.sql") {
 				continue
 			}
-			// Seed data is loaded separately and must not create a Goose version gap.
-			if name == "999_seed_data.up.sql" {
+			// Demo seed data is included for development bootstrap only. Production
+			// keeps the historical behavior and never runs demo seed data.
+			if name == "999_seed_data.up.sql" && strings.EqualFold(strings.TrimSpace(appEnv), "production") {
 				continue
 			}
 

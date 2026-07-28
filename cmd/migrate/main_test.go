@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestPrepareMigrationDirExcludesManualSeed(t *testing.T) {
+func TestPrepareMigrationDirExcludesManualSeedInProduction(t *testing.T) {
 	sourceDir := t.TempDir()
 	for _, name := range []string{"999_seed_data.up.sql", "1010_plans.up.sql"} {
 		if err := os.WriteFile(filepath.Join(sourceDir, name), []byte("-- migration"), 0o644); err != nil {
@@ -14,7 +14,7 @@ func TestPrepareMigrationDirExcludesManualSeed(t *testing.T) {
 		}
 	}
 
-	migrationDir, cleanup, err := prepareMigrationDir("up", sourceDir)
+	migrationDir, cleanup, err := prepareMigrationDir("up", sourceDir, "production")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,5 +25,22 @@ func TestPrepareMigrationDirExcludesManualSeed(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(migrationDir, "1010_plans.up.sql")); err != nil {
 		t.Fatalf("runtime migration should be copied: %v", err)
+	}
+}
+
+func TestPrepareMigrationDirIncludesDemoSeedInDevelopment(t *testing.T) {
+	sourceDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(sourceDir, "999_seed_data.up.sql"), []byte("-- seed"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	migrationDir, cleanup, err := prepareMigrationDir("up", sourceDir, "development")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+
+	if _, err := os.Stat(filepath.Join(migrationDir, "999_seed_data.up.sql")); err != nil {
+		t.Fatalf("development seed migration should be copied: %v", err)
 	}
 }

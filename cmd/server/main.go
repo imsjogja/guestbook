@@ -259,6 +259,10 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 	communicationHandler := handler.NewCommunicationHandler(commService)
 	whatsappIntegrationHandler := handler.NewWhatsAppIntegrationHandler(whatsappIntegrationService)
 	gowaWebhookHandler := handler.NewGOWAWebhookHandler(commRepo, cfg.WhatsApp.GOWAWebhookSecret)
+	var githubIssueNotificationHandler *handler.GitHubIssueNotificationHandler
+	if cfg.GitHub.IssueNotificationsEnabled {
+		githubIssueNotificationHandler = handler.NewGitHubIssueNotificationHandler(whatsappClient, cfg.GitHub.IssueWebhookToken, cfg.GitHub.IssueWhatsAppTo, cfg.GitHub.IssueAllowedRepositories)
+	}
 	dashboardHandler := handler.NewDashboardHandler(dashboardService)
 	invitationSiteHandler := handler.NewInvitationSiteHandler(invitationService, rsvpService, eventService, guestService, checkinService)
 	billingHandler := handler.NewBillingHandler(billingService, midtransClient)
@@ -314,6 +318,7 @@ func createServer(cfg *config.Config, db *sqlx.DB, redisClient *redis.Client) *e
 		communicationHandler,
 		whatsappIntegrationHandler,
 		gowaWebhookHandler,
+		githubIssueNotificationHandler,
 		dashboardHandler,
 		invitationSiteHandler,
 		htmxDashboardHandler,
