@@ -39,6 +39,8 @@ func TestPhoneNumberFromJID(t *testing.T) {
 	tests := map[string]string{
 		"6281234567890@s.whatsapp.net":    "6281234567890",
 		"6281234567890:42@s.whatsapp.net": "6281234567890",
+		"6281234567890":                   "6281234567890",
+		"guestflow-tenant":                "",
 		"":                                "",
 	}
 	for jid, want := range tests {

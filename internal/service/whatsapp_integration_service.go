@@ -370,6 +370,7 @@ func (s *WhatsAppIntegrationService) getConnectionStatus(ctx context.Context, cf
 		Results struct {
 			IsConnected bool   `json:"is_connected"`
 			IsLoggedIn  bool   `json:"is_logged_in"`
+			DeviceID    string `json:"device_id"`
 			JID         string `json:"jid"`
 		} `json:"results"`
 	}
@@ -385,12 +386,13 @@ func (s *WhatsAppIntegrationService) getConnectionStatus(ctx context.Context, cf
 	} else if response.Results.IsConnected {
 		state = "connected"
 	}
+	jid := firstNonEmpty(response.Results.JID, response.Results.DeviceID)
 	return WhatsAppConnectionStatus{
 		State:       state,
 		Connected:   response.Results.IsConnected,
 		LoggedIn:    response.Results.IsLoggedIn,
-		JID:         response.Results.JID,
-		PhoneNumber: phoneNumberFromJID(response.Results.JID),
+		JID:         jid,
+		PhoneNumber: phoneNumberFromJID(jid),
 	}
 }
 
@@ -517,6 +519,11 @@ func phoneNumberFromJID(jid string) string {
 	}
 	if colon := strings.IndexByte(value, ':'); colon >= 0 {
 		value = value[:colon]
+	}
+	for _, char := range value {
+		if char < '0' || char > '9' {
+			return ""
+		}
 	}
 	return value
 }
