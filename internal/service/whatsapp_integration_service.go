@@ -39,16 +39,18 @@ type WhatsAppIntegrationUpdateRequest struct {
 type WhatsAppIntegrationStatus struct {
 	Enabled    bool                     `json:"enabled"`
 	Configured bool                     `json:"configured"`
+	DeviceID   string                   `json:"device_id,omitempty"`
 	Connection WhatsAppConnectionStatus `json:"connection"`
 }
 
 // WhatsAppConnectionStatus is the live device state reported by GOWA.
 type WhatsAppConnectionStatus struct {
-	State     string `json:"state"`
-	Connected bool   `json:"connected"`
-	LoggedIn  bool   `json:"logged_in"`
-	JID       string `json:"jid,omitempty"`
-	Error     string `json:"error,omitempty"`
+	State       string `json:"state"`
+	Connected   bool   `json:"connected"`
+	LoggedIn    bool   `json:"logged_in"`
+	JID         string `json:"jid,omitempty"`
+	PhoneNumber string `json:"phone_number,omitempty"`
+	Error       string `json:"error,omitempty"`
 }
 
 // WhatsAppPairingStatus contains the short-lived QR pairing session details.
@@ -147,6 +149,7 @@ func (s *WhatsAppIntegrationService) GetStatus(ctx context.Context, tenantID uui
 	status := &WhatsAppIntegrationStatus{
 		Enabled:    cfg.Enabled,
 		Configured: cfg.Enabled && configuredForStatus(cfg),
+		DeviceID:   cfg.GOWADeviceID,
 	}
 	status.Connection = s.getConnectionStatus(ctx, cfg)
 	return status, nil
@@ -290,6 +293,33 @@ func (s *WhatsAppIntegrationService) GetPairingQR(ctx context.Context, tenantID 
 	return body, "image/png", nil
 }
 
+// Logout disconnects the tenant's WhatsApp session while retaining its
+// isolated device slot for a future pairing.
+func (s *WhatsAppIntegrationService) Logout(ctx context.Context, tenantID uuid.UUID) (*WhatsAppIntegrationStatus, error) {
+	cfg, err := s.ResolveWhatsAppConfig(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	if !cfg.Enabled || !configuredForStatus(cfg) {
+		return nil, ErrWhatsAppIntegrationInvalid
+	}
+	path := "/devices/" + url.PathEscape(cfg.GOWADeviceID) + "/logout"
+	body, statusCode, err := s.doGOWA(ctx, cfg, http.MethodPost, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	if statusCode == http.StatusNotFound {
+		return s.GetStatus(ctx, tenantID)
+	}
+	if statusCode == http.StatusUnauthorized {
+		return nil, fmt.Errorf("%w: GOWA returned HTTP 401", ErrWhatsAppAuthInvalid)
+	}
+	if statusCode < http.StatusOK || statusCode >= http.StatusMultipleChoices {
+		return nil, gowaResponseError(body, statusCode)
+	}
+	return s.GetStatus(ctx, tenantID)
+}
+
 // SendTest sends a small, explicit connection test without creating an
 // invitation or communication history row.
 func (s *WhatsAppIntegrationService) SendTest(ctx context.Context, tenantID uuid.UUID, to, message string) (*WhatsAppTestSendResult, error) {
@@ -355,7 +385,13 @@ func (s *WhatsAppIntegrationService) getConnectionStatus(ctx context.Context, cf
 	} else if response.Results.IsConnected {
 		state = "connected"
 	}
-	return WhatsAppConnectionStatus{State: state, Connected: response.Results.IsConnected, LoggedIn: response.Results.IsLoggedIn, JID: response.Results.JID}
+	return WhatsAppConnectionStatus{
+		State:       state,
+		Connected:   response.Results.IsConnected,
+		LoggedIn:    response.Results.IsLoggedIn,
+		JID:         response.Results.JID,
+		PhoneNumber: phoneNumberFromJID(response.Results.JID),
+	}
 }
 
 func (s *WhatsAppIntegrationService) ensureGOWADevice(ctx context.Context, cfg config.WhatsAppConfig) error {
@@ -469,6 +505,20 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func phoneNumberFromJID(jid string) string {
+	value := strings.TrimSpace(jid)
+	if value == "" {
+		return ""
+	}
+	if at := strings.IndexByte(value, '@'); at >= 0 {
+		value = value[:at]
+	}
+	if colon := strings.IndexByte(value, ':'); colon >= 0 {
+		value = value[:colon]
+	}
+	return value
 }
 
 func configuredForStatus(cfg config.WhatsAppConfig) bool {

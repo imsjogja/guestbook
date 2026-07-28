@@ -104,6 +104,25 @@ func (h *WhatsAppIntegrationHandler) GetPairingQR(c echo.Context) error {
 	return c.Blob(http.StatusOK, contentType, body)
 }
 
+// Logout disconnects the tenant's currently paired WhatsApp session.
+func (h *WhatsAppIntegrationHandler) Logout(c echo.Context) error {
+	tenantID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return appresponse.BadRequest(c, "Invalid tenant ID")
+	}
+	status, err := h.service.Logout(c.Request().Context(), tenantID)
+	if err != nil {
+		if errors.Is(err, service.ErrWhatsAppIntegrationInvalid) {
+			return appresponse.ValidationError(c, "WhatsApp belum aktif atau belum dikonfigurasi")
+		}
+		if errors.Is(err, service.ErrWhatsAppAuthInvalid) {
+			return appresponse.ServiceUnavailable(c, "Koneksi WhatsApp belum dapat digunakan")
+		}
+		return appresponse.ServiceUnavailable(c, "Gagal logout perangkat WhatsApp")
+	}
+	return appresponse.Success(c, status)
+}
+
 // Test sends a tenant-scoped test message without requiring an event guest.
 func (h *WhatsAppIntegrationHandler) Test(c echo.Context) error {
 	tenantID, err := uuid.Parse(c.Param("id"))

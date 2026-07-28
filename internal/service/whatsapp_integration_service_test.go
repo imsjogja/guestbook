@@ -34,3 +34,16 @@ func TestValidateWhatsAppDeviceID(t *testing.T) {
 		}
 	}
 }
+
+func TestPhoneNumberFromJID(t *testing.T) {
+	tests := map[string]string{
+		"6281234567890@s.whatsapp.net":    "6281234567890",
+		"6281234567890:42@s.whatsapp.net": "6281234567890",
+		"":                                "",
+	}
+	for jid, want := range tests {
+		if got := phoneNumberFromJID(jid); got != want {
+			t.Errorf("phoneNumberFromJID(%q) = %q, want %q", jid, got, want)
+		}
+	}
+}

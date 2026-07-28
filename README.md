@@ -285,6 +285,7 @@ OpenAPI 3.0 specification available at `docs/api/openapi.yaml`.
 | `PATCH` | `/api/v1/tenants/:id/integrations/whatsapp` | Save and apply WhatsApp credentials |
 | `POST` | `/api/v1/tenants/:id/integrations/whatsapp/pair` | Start GOWA QR pairing |
 | `GET`  | `/api/v1/tenants/:id/integrations/whatsapp/qr` | Get the current pairing QR image |
+| `POST` | `/api/v1/tenants/:id/integrations/whatsapp/logout` | Logout tenant WhatsApp device |
 | `GET`  | `/api/v1/tenants/:id/events` | List events |
 | `POST` | `/api/v1/tenants/:id/events` | Create event |
 | `GET`  | `/api/v1/tenants/:id/events/:eventId/members/access` | Get effective event access |
